@@ -1,0 +1,387 @@
+
+-- Novo script em TOTVS | PRD | TCLOUD | R.
+-- Autor: Enrico Augusto
+-- Data: 2 de jul. de 2026
+-- Hora: 08:46:12
+-- Empresa: Agronelli
+
+
+
+/*-------------------------------------------------------------------------------------------------------------------------------------------------------
+AUTOR: ENRICO CARDOSO
+DESCRICAO: Lista as SC's aberta e seus status 
+DATA: 15/07/2026
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+SP_HDS3418_RCOM03 '01/01/2025','31/12/2025'
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+DROP PROCEDURE SP_HDS3418_RCOM03
+-------------------------------------------------------------------------------------------------------------------------------------------------------*/
+ALTER PROCEDURE SP_HDS3418_RCOM03
+(	@MV_PAR01		VARCHAR(10),
+	@MV_PAR02		VARCHAR(10)
+--	,@MV_PAR03		VARCHAR(200)
+) AS
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT @MV_PAR01=SUBSTRING(@MV_PAR01,7,4)+SUBSTRING(@MV_PAR01,4,2)+SUBSTRING(@MV_PAR01,1,2)
+SELECT @MV_PAR02=SUBSTRING(@MV_PAR02,7,4)+SUBSTRING(@MV_PAR02,4,2)+SUBSTRING(@MV_PAR02,1,2)
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+SET NOCOUNT ON
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+-- SC1,SB1
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--DECLARE @MV_PAR01 VARCHAR(8)
+--DECLARE @MV_PAR02 VARCHAR(8)
+--SET @MV_PAR01 = '20260701'
+--SET @MV_PAR02 = '20260710'
+;WITH B120 AS (
+	SELECT B1_COD, B1.B1_GRUPO , YC.BM_DESC 
+	FROM SB1200 B1
+	LEFT JOIN SBM200 YC ON YC.BM_GRUPO = B1.B1_GRUPO AND YC.D_E_L_E_T_ = ''
+	WHERE B1.D_E_L_E_T_ = ''
+),
+B123 AS (
+	SELECT B1_COD, B1.B1_GRUPO , YC.BM_DESC 
+	FROM SB1230 B1
+	LEFT JOIN SBM230 YC ON YC.BM_GRUPO = B1.B1_GRUPO AND YC.D_E_L_E_T_ = ''
+	WHERE B1.D_E_L_E_T_ = ''
+),
+B106 AS (
+	SELECT B1_COD, B1.B1_GRUPO , YC.BM_DESC 
+	FROM SB1060 B1
+	LEFT JOIN SBM060 YC ON YC.BM_GRUPO = B1.B1_GRUPO AND YC.D_E_L_E_T_ = ''
+	WHERE B1.D_E_L_E_T_ = ''
+),
+B108 AS (
+	SELECT B1_COD, B1.B1_GRUPO , YC.BM_DESC 
+	FROM SB1080 B1
+	LEFT JOIN SBM080 YC ON YC.BM_GRUPO = B1.B1_GRUPO AND YC.D_E_L_E_T_ = ''
+	WHERE B1.D_E_L_E_T_ = ''
+),
+SCR20 AS (
+	SELECT '20' AS 'SCREMP', CR_FILIAL ,CR_NUM, MAX(CR_STATUS)  CR_STATUS, MAX(CR_DATALIB) CR_DATALIB
+	FROM SCR200 
+	WHERE CR_TIPO = 'SC'
+	AND D_E_L_E_T_ = ''
+	GROUP BY CR_FILIAL , CR_NUM
+	HAVING MAX(CR_STATUS) = '03'
+),
+SCR23 AS (
+	SELECT '23' AS 'SCREMP', CR_FILIAL ,CR_NUM, MAX(CR_STATUS)  CR_STATUS, MAX(CR_DATALIB) CR_DATALIB
+	FROM SCR230 
+	WHERE CR_TIPO = 'SC'
+	AND D_E_L_E_T_ = ''
+	GROUP BY CR_FILIAL , CR_NUM
+	HAVING MAX(CR_STATUS) = '03'
+),
+SCR06 AS (
+	SELECT '06' AS 'SCREMP', CR_FILIAL ,CR_NUM, MAX(CR_STATUS)  CR_STATUS, MAX(CR_DATALIB) CR_DATALIB
+	FROM SCR060 
+	WHERE CR_TIPO = 'SC'
+	AND D_E_L_E_T_ = ''
+	GROUP BY CR_FILIAL , CR_NUM
+	HAVING MAX(CR_STATUS) = '03'
+),
+SCR08 AS (
+	SELECT '08' AS 'SCREMP', CR_FILIAL ,CR_NUM, MAX(CR_STATUS)  CR_STATUS, MAX(CR_DATALIB) CR_DATALIB
+	FROM SCR080 
+	WHERE CR_TIPO = 'SC'
+	AND D_E_L_E_T_ = ''
+	GROUP BY CR_FILIAL , CR_NUM
+	HAVING MAX(CR_STATUS) = '03'
+)
+SELECT 
+	C1.C1_SOLICIT SOLICITANTE,
+	CASE
+		WHEN C1.C1_APROV = 'R' THEN 'Rejeitado'
+	    WHEN C1.C1_APROV = 'B' THEN 'Aguardando Aprovação' 
+	    WHEN C1_FLAGGCT <> ''  THEN 'Pedido de Contrato'
+	    WHEN C1_RESIDUO <> '' THEN 'SC com Resíduo '
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  = ''  THEN 'SC não Atendida'
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  <> ''  THEN 'SC em Cotação'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  <> ''  THEN 'SC Parcialmente Atendida'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  = ''  THEN 'SC Parcialmente Atendida S/ Cotação'
+	END AS STATUS ,
+	CONVERT(varchar(10), CONVERT(date, C1.C1_EMISSAO , 112), 103) EMISSAO , 
+	CONVERT(varchar(10), CONVERT(date, C1.C1_DATPRF , 112), 103) DT_NECESSIDADE , 
+	CONVERT(varchar(10), CONVERT(date, SCR20.CR_DATALIB  , 112), 103) DT_LIBERACAO , 	
+	CASE
+		WHEN C1_AG_STAT = '1' THEN 'Normal'
+		WHEN C1_AG_STAT = '2' THEN 'Urgente'
+		WHEN C1_AG_STAT = '3' THEN 'Contrato'
+		WHEN C1_AG_STAT = '4' THEN 'Emergencial'
+		WHEN C1_AG_STAT = '5' THEN 'Regularização'
+		ELSE C1_AG_STAT
+	END TIPO,	
+		'20' AS EMP,		
+		C1.C1_FILIAL FILIAL ,
+		C1.C1_NUM NUMERO ,
+		C1.C1_ITEM ITEM,
+		TRIM(C1.C1_FILIAL)+TRIM(C1.C1_NUM)+TRIM(C1.C1_ITEM) IDSCITEM,	
+		C1.C1_COTACAO COTACAO, 		
+		C1.C1_PRODUTO PRODUTO,
+		C1.C1_DESCRI DESC_PRODUTO,
+		C1.C1_OBS OBS,
+		TRIM(B120.B1_GRUPO) COD_GRUPO,
+		TRIM(B120.BM_DESC) GRUPO,
+		C1.C1_UM UM,
+		C1.C1_QUANT QUANT,
+		C1.C1_QUJE QUANT_ENTREGUE,
+		C1.C1_VUNIT VL_UNIT, 
+		DATEDIFF(DAY, C1.C1_EMISSAO, C1.C1_DATPRF) DIAS_PARA_COMPRA ,
+		DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) DIAS_EM_ABERTO ,
+		CASE 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) <= 10  THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) >  10  THEN 'Fora do Prazo' 	
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) <= 5   THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) >  5   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) <= 15  THEN 'Dentro do Prazo'			
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR20.CR_DATALIB , GETDATE()) >  15  THEN 'Fora do Prazo'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV <> 'R' THEN 'Aguardando Liberação'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV =  'R' THEN 'Rejeitado'
+			WHEN CR_DATALIB IS NOT NULL AND C1.C1_APROV = 'R'  THEN 'Rejeitado'
+			ELSE 'NÃO MAPEADO'
+		END AS STATUS_PRAZO,
+		C1.C1_NOMAPRO APROVADOR,
+		C1.C1_PEDIDO PEDIDO		
+	FROM
+		SC1200 C1
+	INNER JOIN B120 ON B120.B1_COD = C1.C1_PRODUTO  
+	LEFT JOIN SCR20 ON SCR20.SCREMP='20' AND SCR20.CR_FILIAL = C1.C1_FILIAL AND SCR20.CR_NUM = C1.C1_NUM 
+	WHERE
+		C1.D_E_L_E_T_ = ''
+	AND C1.C1_QUJE <> C1.C1_QUANT 
+	AND C1.C1_RESIDUO <> 'S'
+	AND C1.C1_FLAGGCT = ''
+	AND C1.C1_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02	
+UNION	
+SELECT 
+	C1.C1_SOLICIT SOLICITANTE,
+	CASE
+		WHEN C1.C1_APROV = 'R' THEN 'Rejeitado'
+	    WHEN C1.C1_APROV = 'B' THEN 'Aguardando Aprovação' 
+	    WHEN C1_FLAGGCT <> ''  THEN 'Pedido de Contrato'
+	    WHEN C1_RESIDUO <> '' THEN 'SC com Resíduo '
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  = ''  THEN 'SC não Atendida'
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  <> ''  THEN 'SC em Cotação'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  <> ''  THEN 'SC Parcialmente Atendida'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  = ''  THEN 'SC Parcialmente Atendida S/ Cotação'
+	END AS STATUS ,
+	CONVERT(varchar(10), CONVERT(date, C1.C1_EMISSAO , 112), 103) EMISSAO , 
+	CONVERT(varchar(10), CONVERT(date, C1.C1_DATPRF , 112), 103) DT_NECESSIDADE , 
+	CONVERT(varchar(10), CONVERT(date, SCR23.CR_DATALIB  , 112), 103) DT_LIBERACAO , 	
+	CASE
+		WHEN C1_AG_STAT = '1' THEN 'Normal'
+		WHEN C1_AG_STAT = '2' THEN 'Urgente'
+		WHEN C1_AG_STAT = '3' THEN 'Contrato'
+		WHEN C1_AG_STAT = '4' THEN 'Emergencial'
+		WHEN C1_AG_STAT = '5' THEN 'Regularização'
+		ELSE C1_AG_STAT
+	END TIPO,	
+		'23' AS EMP,		
+		C1.C1_FILIAL FILIAL ,
+		C1.C1_NUM NUMERO ,
+		C1.C1_ITEM ITEM,
+		TRIM(C1.C1_FILIAL)+TRIM(C1.C1_NUM)+TRIM(C1.C1_ITEM) IDSCITEM,	
+		C1.C1_COTACAO COTACAO, 		
+		C1.C1_PRODUTO PRODUTO,
+		C1.C1_DESCRI DESC_PRODUTO,
+		C1.C1_OBS OBS,
+		TRIM(B123.B1_GRUPO) COD_GRUPO,
+		TRIM(B123.BM_DESC) GRUPO,
+		C1.C1_UM UM,
+		C1.C1_QUANT QUANT,
+		C1.C1_QUJE QUANT_ENTREGUE,
+		C1.C1_VUNIT VL_UNIT, 
+		DATEDIFF(DAY, C1.C1_EMISSAO, C1.C1_DATPRF) DIAS_PARA_COMPRA ,
+		DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) DIAS_EM_ABERTO ,
+		CASE 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) <= 10  THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) >  10  THEN 'Fora do Prazo' 	
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) <= 5   THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) >  5   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) <= 15  THEN 'Dentro do Prazo'			
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR23.CR_DATALIB , GETDATE()) >  15  THEN 'Fora do Prazo'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV <> 'R' THEN 'Aguardando Liberação'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV =  'R' THEN 'Rejeitado'
+			WHEN CR_DATALIB IS NOT NULL AND C1.C1_APROV = 'R'  THEN 'Rejeitado'
+			ELSE 'NÃO MAPEADO'
+		END AS STATUS_PRAZO,
+		C1.C1_NOMAPRO APROVADOR,
+		C1.C1_PEDIDO PEDIDO	
+	FROM
+		SC1230 C1
+	INNER JOIN B123 ON B123.B1_COD = C1.C1_PRODUTO  
+	LEFT JOIN SCR23 ON SCR23.SCREMP='23' AND SCR23.CR_FILIAL = C1.C1_FILIAL AND SCR23.CR_NUM = C1.C1_NUM 
+	WHERE
+		C1.D_E_L_E_T_ = ''
+	AND C1.C1_QUJE <> C1.C1_QUANT 
+	AND C1.C1_RESIDUO <> 'S'
+	AND C1.C1_FLAGGCT = ''
+	AND C1.C1_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+UNION	
+SELECT  
+	C1.C1_SOLICIT SOLICITANTE,
+	CASE
+		WHEN C1.C1_APROV = 'R' THEN 'Rejeitado'
+	    WHEN C1.C1_APROV = 'B' THEN 'Aguardando Aprovação' 
+	    WHEN C1_FLAGGCT <> ''  THEN 'Pedido de Contrato'
+	    WHEN C1_RESIDUO <> '' THEN 'SC com Resíduo '
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  = ''  THEN 'SC não Atendida'
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  <> ''  THEN 'SC em Cotação'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  <> ''  THEN 'SC Parcialmente Atendida'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  = ''  THEN 'SC Parcialmente Atendida S/ Cotação'
+	END AS STATUS ,
+	CONVERT(varchar(10), CONVERT(date, C1.C1_EMISSAO , 112), 103) EMISSAO , 
+	CONVERT(varchar(10), CONVERT(date, C1.C1_DATPRF , 112), 103) DT_NECESSIDADE , 
+	CONVERT(varchar(10), CONVERT(date, SCR06.CR_DATALIB  , 112), 103) DT_LIBERACAO , 	
+	CASE
+		WHEN C1_AG_STAT = '1' THEN 'Normal'
+		WHEN C1_AG_STAT = '2' THEN 'Urgente'
+		WHEN C1_AG_STAT = '3' THEN 'Contrato'
+		WHEN C1_AG_STAT = '4' THEN 'Emergencial'
+		WHEN C1_AG_STAT = '5' THEN 'Regularização'
+		ELSE C1_AG_STAT
+	END TIPO,	
+		'06' AS EMP,		
+		C1.C1_FILIAL FILIAL ,
+		C1.C1_NUM NUMERO ,
+		C1.C1_ITEM ITEM,
+		TRIM(C1.C1_FILIAL)+TRIM(C1.C1_NUM)+TRIM(C1.C1_ITEM) IDSCITEM,	
+		C1.C1_COTACAO COTACAO, 		
+		C1.C1_PRODUTO PRODUTO,
+		C1.C1_DESCRI DESC_PRODUTO,
+		C1.C1_OBS OBS,
+		TRIM(B106.B1_GRUPO) COD_GRUPO,
+		TRIM(B106.BM_DESC) GRUPO,
+		C1.C1_UM UM,
+		C1.C1_QUANT QUANT,
+		C1.C1_QUJE QUANT_ENTREGUE,
+		C1.C1_VUNIT VL_UNIT, 
+		DATEDIFF(DAY, C1.C1_EMISSAO, C1.C1_DATPRF) DIAS_PARA_COMPRA ,
+		DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) DIAS_EM_ABERTO ,
+		CASE 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) <= 10  THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) >  10  THEN 'Fora do Prazo' 	
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) <= 5   THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) >  5   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) <= 15  THEN 'Dentro do Prazo'			
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR06.CR_DATALIB , GETDATE()) >  15  THEN 'Fora do Prazo'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV <> 'R' THEN 'Aguardando Liberação'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV =  'R' THEN 'Rejeitado'
+			WHEN CR_DATALIB IS NOT NULL AND C1.C1_APROV = 'R'  THEN 'Rejeitado'			
+			ELSE 'NÃO MAPEADO'
+		END AS STATUS_PRAZO,
+		C1.C1_NOMAPRO APROVADOR,
+		C1.C1_PEDIDO PEDIDO	
+	FROM
+		SC1060 C1
+	INNER JOIN B106 ON B106.B1_COD = C1.C1_PRODUTO 
+	LEFT JOIN SCR06 ON SCR06.SCREMP='06' AND SCR06.CR_FILIAL = C1.C1_FILIAL AND SCR06.CR_NUM = C1.C1_NUM 
+	WHERE
+		C1.D_E_L_E_T_ = ''
+	AND C1.C1_QUJE <> C1.C1_QUANT 
+	AND C1.C1_RESIDUO <> 'S'
+	AND C1.C1_FLAGGCT = ''
+	AND C1.C1_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+UNION	
+SELECT 
+	C1.C1_SOLICIT SOLICITANTE,
+	CASE
+		WHEN C1.C1_APROV = 'R' THEN 'Rejeitado'
+	    WHEN C1.C1_APROV = 'B' THEN 'Aguardando Aprovação' 
+	    WHEN C1_FLAGGCT <> ''  THEN 'Pedido de Contrato'
+	    WHEN C1_RESIDUO <> '' THEN 'SC com Resíduo '
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  = ''  THEN 'SC não Atendida'
+	    WHEN C1_PEDIDO  = '' and C1_COTACAO  <> ''  THEN 'SC em Cotação'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  <> ''  THEN 'SC Parcialmente Atendida'
+	    WHEN C1_PEDIDO  <> '' and C1_COTACAO  = ''  THEN 'SC Parcialmente Atendida S/ Cotação'
+	END AS STATUS ,
+	CONVERT(varchar(10), CONVERT(date, C1.C1_EMISSAO , 112), 103) EMISSAO , 
+	CONVERT(varchar(10), CONVERT(date, C1.C1_DATPRF , 112), 103) DT_NECESSIDADE , 
+	CONVERT(varchar(10), CONVERT(date, SCR08.CR_DATALIB  , 112), 103) DT_LIBERACAO , 	
+	CASE
+		WHEN C1_AG_STAT = '1' THEN 'Normal'
+		WHEN C1_AG_STAT = '2' THEN 'Urgente'
+		WHEN C1_AG_STAT = '3' THEN 'Contrato'
+		WHEN C1_AG_STAT = '4' THEN 'Emergencial'
+		WHEN C1_AG_STAT = '5' THEN 'Regularização'
+		ELSE C1_AG_STAT
+	END TIPO,	
+		'08' AS EMP,		
+		C1.C1_FILIAL FILIAL ,
+		C1.C1_NUM NUMERO ,
+		C1.C1_ITEM ITEM,
+		TRIM(C1.C1_FILIAL)+TRIM(C1.C1_NUM)+TRIM(C1.C1_ITEM) IDSCITEM,	
+		C1.C1_COTACAO COTACAO, 		
+		C1.C1_PRODUTO PRODUTO,
+		C1.C1_DESCRI DESC_PRODUTO,
+		C1.C1_OBS OBS,
+		TRIM(B108.B1_GRUPO) COD_GRUPO,
+		TRIM(B108.BM_DESC) GRUPO,
+		C1.C1_UM UM,
+		C1.C1_QUANT QUANT,
+		C1.C1_QUJE QUANT_ENTREGUE,
+		C1.C1_VUNIT VL_UNIT, 
+		DATEDIFF(DAY, C1.C1_EMISSAO, C1.C1_DATPRF) DIAS_PARA_COMPRA ,
+		DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) DIAS_EM_ABERTO ,
+		CASE 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) <= 10  THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '1'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) >  10  THEN 'Fora do Prazo' 	
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) <= 5   THEN 'Dentro do Prazo' 
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '2'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) >  5   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '4'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) <= 1   THEN 'Dentro do Prazo'
+			WHEN C1.C1_UM   <> 'SV' AND C1_AG_STAT = '5'  AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) >  1   THEN 'Fora do Prazo'
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) <= 15  THEN 'Dentro do Prazo'			
+			WHEN C1.C1_UM   = 'SV' AND DATEDIFF(DAY, SCR08.CR_DATALIB , GETDATE()) >  15  THEN 'Fora do Prazo'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV <> 'R' THEN 'Aguardando Liberação'
+			WHEN CR_DATALIB IS NULL AND C1.C1_APROV =  'R' THEN 'Rejeitado'
+			WHEN CR_DATALIB IS NOT NULL AND C1.C1_APROV = 'R'  THEN 'Rejeitado'			
+			ELSE 'NÃO MAPEADO'
+		END AS STATUS_PRAZO,
+		C1.C1_NOMAPRO APROVADOR,
+		C1.C1_PEDIDO PEDIDO	
+	FROM
+		SC1080 C1
+	INNER JOIN B108 ON B108.B1_COD = C1.C1_PRODUTO  
+	LEFT JOIN SCR08 ON SCR08.SCREMP='08' AND SCR08.CR_FILIAL = C1.C1_FILIAL AND SCR08.CR_NUM = C1.C1_NUM 
+	WHERE
+		C1.D_E_L_E_T_ = ''
+	AND C1.C1_QUJE <> C1.C1_QUANT 
+	AND C1.C1_RESIDUO <> 'S'
+	AND C1.C1_FLAGGCT = ''
+	AND C1.C1_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+SET NOCOUNT OFF
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--
+-------------------- CAPTURA PROCEDURES 
+--SELECT sm.definition
+--FROM sys.sql_modules sm
+--JOIN sys.objects o
+--    ON sm.object_id = o.object_id
+--WHERE o.name = 'SP_HDS3418_RCOM03';
+--
+--
+-------------------- PERMISSAO PROCEDURE
+--GRANT EXECUTE ON dbo.SP_HDS3549_RGPE001
+--TO [CLT171703totvsread];
+--
+--
