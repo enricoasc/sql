@@ -1,0 +1,28 @@
+# Credenciais e configurações locais
+.env
+.env.*
+!.env.example
+*.user
+*.suo
+
+# Configurações locais do DBCode e editores
+.dbcode/
+.vscode/*.local.json
+
+# Resultados e exportações de consultas
+results/
+exports/
+*.csv
+*.tsv
+*.xlsx
+
+# Temporários e logs
+*.log
+*.tmp
+*.bak
+~$*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
