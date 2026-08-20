@@ -2,7 +2,7 @@
 
 Estrutura versionada para desenvolvimento e validação de SQL Protheus em Microsoft SQL Server.
 
-O projeto atualmente ativo está na pasta `Agronelli/`.
+O projeto atualmente ativo está na pasta `queries/Agronelli/`. As pastas `queries/Fertminas/` e `queries/RioBranco/` contêm o acervo legado.
 
 ## Diretórios
 

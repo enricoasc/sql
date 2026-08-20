@@ -1,6 +1,6 @@
 # Contexto do projeto Agronelli
 
-O projeto ativo deste repositório está na pasta `Agronelli/` e usa o banco `CCW2SA_171703_PR_PD` pela conexão dbcode `Agronelli_tst_local`.
+O projeto ativo deste repositório está na pasta `queries/Agronelli/` e usa o banco `CCW2SA_171703_PR_PD` pela conexão dbcode `Agronelli_tst_local`. As demais pastas de empresa dentro de `queries/` são tratadas como acervo legado, salvo indicação contrária do usuário.
 
 ## Grupos
 
@@ -34,4 +34,3 @@ O valor `010101` é apenas um exemplo conhecido para os grupos `20` e `23`; não
 - `SX6`: parâmetros, com atenção ao escopo de empresa e filial.
 
 Os nomes físicos e campos dessas tabelas de dicionário também devem ser descobertos pelo MCP dbcode. Em caso de dúvida não resolvida pelo ambiente, consulte primeiro o TDN da TOTVS e depois, se necessário, fontes técnicas secundárias, sempre verificando compatibilidade com a versão instalada.
-

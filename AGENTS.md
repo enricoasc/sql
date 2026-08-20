@@ -5,7 +5,7 @@
 Este repositório contém desenvolvimento SQL para ambientes Protheus.
 Estas regras se aplicam a todo o repositório, salvo quando um `AGENTS.md` mais específico existir em um subdiretório.
 
-O projeto ativo é o da pasta `Agronelli/`. Considere os demais diretórios como conteúdo legado ou projetos fora do escopo atual, a menos que o usuário indique o contrário.
+O projeto ativo é o da pasta `queries/Agronelli/`. Considere `queries/Fertminas/` e `queries/RioBranco/` como acervo legado ou projetos fora do escopo atual, a menos que o usuário indique o contrário.
 
 ## Papel técnico do agente
 
@@ -27,7 +27,7 @@ O projeto ativo é o da pasta `Agronelli/`. Considere os demais diretórios como
 
 ## Estrutura organizacional Agronelli
 
-Na pasta `Agronelli/`, use o seguinte mapeamento de grupos:
+Na pasta `queries/Agronelli/`, use o seguinte mapeamento de grupos:
 
 | Código | Grupo/empresa | Exemplo de filial |
 | --- | --- | --- |
