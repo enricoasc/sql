@@ -1,4 +1,3 @@
-
 -- Novo script em TOTVS | PRD | TCLOUD | R.
 -- Autor: Enrico Augusto
 -- Data: 2 de jul. de 2026
@@ -15,15 +14,16 @@ SP_HDS3418_RCOM04 '01/01/2025','31/12/2025'
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 DROP PROCEDURE SP_HDS3418_RCOM04
 -------------------------------------------------------------------------------------------------------------------------------------------------------*/
-ALTER PROCEDURE SP_HDS3418_RCOM04
+ALTER PROCEDURE dbo.SP_HDS3418_RCOM04
 (	@MV_PAR01		VARCHAR(10),
 	@MV_PAR02		VARCHAR(10)
 ) AS
+BEGIN
 -------------------------------------------------------------------------------------------------------------------------------------------------------
-SELECT @MV_PAR01=SUBSTRING(@MV_PAR01,7,4)+SUBSTRING(@MV_PAR01,4,2)+SUBSTRING(@MV_PAR01,1,2)
-SELECT @MV_PAR02=SUBSTRING(@MV_PAR02,7,4)+SUBSTRING(@MV_PAR02,4,2)+SUBSTRING(@MV_PAR02,1,2)
--------------------------------------------------------------------------------------------------------------------------------------------------------
-SET NOCOUNT ON
+SET NOCOUNT ON;
+
+SET @MV_PAR01 = SUBSTRING(@MV_PAR01, 7, 4) + SUBSTRING(@MV_PAR01, 4, 2) + SUBSTRING(@MV_PAR01, 1, 2);
+SET @MV_PAR02 = SUBSTRING(@MV_PAR02, 7, 4) + SUBSTRING(@MV_PAR02, 4, 2) + SUBSTRING(@MV_PAR02, 1, 2);
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -37,7 +37,15 @@ SET NOCOUNT ON
         A2.A2_NOME    AS NME_FORNECE,
         A2.A2_NREDUZ  AS NMR_FORNECE,
         A2.A2_CGC     AS CGC,
-        C7.C7_TIPO    AS TIPO,
+        CASE
+            WHEN C7.C7_AG_STAT = '1' THEN 'Normal'
+            WHEN C7.C7_AG_STAT = ''  THEN 'Normal'
+            WHEN C7.C7_AG_STAT = '2' THEN 'Urgente'
+            WHEN C7.C7_AG_STAT = '3' THEN 'Contrato'
+            WHEN C7.C7_AG_STAT = '4' THEN 'Emergencial'
+            WHEN C7.C7_AG_STAT = '5' THEN 'Regularização'
+            ELSE C7.C7_AG_STAT
+        END AS TIPO,
         C7.C7_ITEM    AS ITEM,
         C7.C7_PRODUTO AS COD_PRODUTO,
         C7.C7_DESCRI  AS NME_PRODUTO,
@@ -57,7 +65,7 @@ SET NOCOUNT ON
         C7.C7_EMITIDO AS IMPRESSO,
         C7.C7_NUMCOT  AS COTACAO,
         C7.C7_CONTRA  AS CONTRATO,
-        C7.C7_AG_USER AS COMPRADOR,
+        COALESCE(NULLIF(RTRIM(U.USR_NOME), ''), RTRIM(C7.C7_USER)) AS COMPRADOR,
         C7.C7_SOLICIT AS SOLICITANTE,
         C7.C7_JUSTIFI AS JUSTIFICATIVA,
         CASE
@@ -77,6 +85,9 @@ SET NOCOUNT ON
             ON A2.A2_COD = C7.C7_FORNECE
            AND A2.A2_LOJA = C7.C7_LOJA
            AND A2.D_E_L_E_T_ = ''
+        LEFT JOIN SYS_USR U
+            ON U.USR_ID = C7.C7_USER
+           AND U.D_E_L_E_T_ = ''
     WHERE C7.D_E_L_E_T_ = ''
       AND C7.C7_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
 ),
@@ -94,7 +105,7 @@ D1 AS
         MAX(D1_DTDIGIT) AS DT_DIGITACAO
     FROM SD1200
     WHERE D_E_L_E_T_ = ''
-    GROUP BY  D1_FILIAL, D1_PEDIDO, D1_ITEMPC
+    GROUP BY D1_FILIAL, D1_PEDIDO, D1_ITEMPC
 ),
 CR AS
 (
@@ -184,24 +195,6 @@ LEFT JOIN B1
        ON B1.B1_COD = C7.COD_PRODUTO
 LEFT JOIN D11
        ON D11.D1_COD = C7.COD_PRODUTO
+OPTION (RECOMPILE);
 
--------------------------------------------------------------------------------------------------------------------------------------------------------
-SET NOCOUNT OFF
-
--------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
-
-
------------------- CAPTURA PROCEDURES 
-SELECT sm.definition
-FROM sys.sql_modules sm
-JOIN sys.objects o
-    ON sm.object_id = o.object_id
-WHERE o.name = 'SP_HDS3418_RCOM04';
-
-
------------------- PERMISSAO PROCEDURE
-GRANT EXECUTE ON dbo.SP_HDS3418_RCOM04
-TO [CLT171703totvsread];
+END;
