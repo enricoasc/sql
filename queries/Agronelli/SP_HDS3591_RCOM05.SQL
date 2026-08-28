@@ -1,291 +1,321 @@
-/*=============================================================================
-  Objeto........: dbo.SP_HDS3720_RTRM01
-  Objetivo......: Listar treinamentos dos funcionarios, com estrutura
-                  organizacional e vencimento, em todos os grupos Agronelli.
-  Banco.........: CCW2SA_171703_PR_PD
-  Conexao.......: Agronelli_tst_local
-  Granularidade.: Uma linha por grupo/filial/funcionario/primeiras 5 posicoes
-                  da descricao do curso, mantendo a maior validade da RA4.
-  Validado em...: 2026-08-28, somente leitura, via MCP dbcode.
+/*--------------------------------------------------------------------------
+AUTOR: ENRICO CARDOSO
+DESCRICAO: Lista os pedidos de compra e seus status para todos os grupos.
+BANCO ESPERADO: CCW2SA_171703_PR_PD
+OBJETOS VALIDADOS: SC7/SA2/SD1/SCR/SB1/SBM dos grupos 20, 23, 06 e 08;
+                   SYS_USR.
+ULTIMA VALIDACAO: 28/08/2026
 
-  Grupos incluidos:
-    20 - Grupo Agronelli
-    23 - MTP
-    06 - IADS
-    08 - Neltech
-
-  Objetos validados:
-    RA4200/RA4230/RA4060/RA4080 - cursos dos funcionarios (exclusivas)
-    SRA200/SRA230/SRA060/SRA080 - funcionarios (exclusivas)
-    RA1200/RA1230/RA1060/RA1080 - cadastro de cursos (compartilhadas)
-    RA2200/RA2230/RA2060/RA2080 - treinamentos/turmas (exclusivas por filial)
-    SRJ200/SRJ230/SRJ060/SRJ080 - funcoes (compartilhadas)
-    SQB200/SQB230/SQB060/SQB080 - departamentos (compartilhadas)
-    SX2200/SX3200/SX5200         - compartilhamento, campos e dominios
-
-  Situacao do funcionario:
-    STATUS_COLABORADOR retorna o valor original de SRA.RA_SITFOLH.
-    DESCRICAO_STATUS_COLABORADOR traduz o dominio confirmado na SX5/31:
-    espaco=Normal, A=Afastado, D=Demitido, F=Ferias e T=Transferido.
-    Somente funcionarios normais (espaco) e em ferias (F) sao retornados.
-
-  Observacao:
-    O grupo 08 nao possui RA_AG_GER/RA_AG_GER2 no objeto fisico. Nesses casos,
-    GERENCIA_N1 retorna vazia, sem inventar dados. RA_AG_GER2 continua sendo
-    considerado internamente pelo filtro de nome da gerencia nos demais grupos.
-
-    A RA2 foi validada, mas nao foi ligada ao resultado: em 2026-08-27 nenhum
-    registro ativo da RA4 encontrou RA2 pela chave completa validada
-    FILIAL + CALENDARIO + CURSO + TURMA. Relacionar somente pelo curso causaria
-    associacao ambigua entre turmas e poderia multiplicar registros.
-=============================================================================*/
-/* Exemplos:
-EXEC dbo.SP_HDS3720_RTRM01;
-EXEC dbo.SP_HDS3720_RTRM01 @FUNCIONARIO = 'JOAO';
-EXEC dbo.SP_HDS3720_RTRM01 @TREINAMENTO = 'NR';
-EXEC dbo.SP_HDS3720_RTRM01 @NOME_GERENCIA = 'ADRIANA';
-*/
-CREATE OR ALTER PROCEDURE dbo.SP_HDS3720_RTRM01
-    @FUNCIONARIO   VARCHAR(100) = NULL,
-    @TREINAMENTO  VARCHAR(100) = NULL,
-    @NOME_GERENCIA VARCHAR(100) = NULL
+Execucao de exemplo:
+    SP_HDS3418_RCOM04 '01/01/2025', '31/12/2025';
+--------------------------------------------------------------------------*/
+ALTER PROCEDURE dbo.SP_HDS3418_RCOM04
+(
+    @MV_PAR01 VARCHAR(10),
+    @MV_PAR02 VARCHAR(10)
+)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT @FUNCIONARIO = NULLIF(LTRIM(RTRIM(@FUNCIONARIO)), '');
-    SELECT @TREINAMENTO = NULLIF(LTRIM(RTRIM(@TREINAMENTO)), '');
-    SELECT @NOME_GERENCIA = NULLIF(LTRIM(RTRIM(@NOME_GERENCIA)), '');
+    SET @MV_PAR01 = SUBSTRING(@MV_PAR01, 7, 4)
+                  + SUBSTRING(@MV_PAR01, 4, 2)
+                  + SUBSTRING(@MV_PAR01, 1, 2);
+    SET @MV_PAR02 = SUBSTRING(@MV_PAR02, 7, 4)
+                  + SUBSTRING(@MV_PAR02, 4, 2)
+                  + SUBSTRING(@MV_PAR02, 1, 2);
 
-    WITH FUNCIONARIOS AS
+    ;WITH C7_ORIGEM AS
+    (
+        SELECT '20' AS GRUPO_COD, '20 - Grupo Agronelli' AS GRUPO_EMPRESA,
+               C7_FILIAL, C7_NUM, C7_FORNECE, C7_LOJA, C7_AG_STAT,
+               C7_ITEM, C7_PRODUTO, C7_DESCRI, C7_UM, C7_QUANT, C7_QUJE,
+               C7_PRECO, C7_TOTAL, C7_VLDESC, C7_LOCAL, C7_NUMSC,
+               C7_DATPRF, C7_EMISSAO, C7_COND, C7_CC, C7_EMITIDO,
+               C7_NUMCOT, C7_CONTRA, C7_USER, C7_SOLICIT, C7_JUSTIFI,
+               C7_RESIDUO, C7_QTDACLA, C7_TIPO, C7_CONAPRO, R_E_C_N_O_
+        FROM dbo.SC7200
+        WHERE D_E_L_E_T_ = '' AND C7_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+
+        UNION ALL
+
+        SELECT '23', '23 - MTP', C7_FILIAL, C7_NUM, C7_FORNECE, C7_LOJA,
+               CAST('' AS VARCHAR(1)), C7_ITEM, C7_PRODUTO, C7_DESCRI, C7_UM,
+               C7_QUANT, C7_QUJE, C7_PRECO, C7_TOTAL, C7_VLDESC, C7_LOCAL,
+               C7_NUMSC, C7_DATPRF, C7_EMISSAO, C7_COND, C7_CC, C7_EMITIDO,
+               C7_NUMCOT, C7_CONTRA, C7_USER, C7_SOLICIT, C7_JUSTIFI,
+               C7_RESIDUO, C7_QTDACLA, C7_TIPO, C7_CONAPRO, R_E_C_N_O_
+        FROM dbo.SC7230
+        WHERE D_E_L_E_T_ = '' AND C7_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+
+        UNION ALL
+
+        SELECT '06', '06 - IADS', C7_FILIAL, C7_NUM, C7_FORNECE, C7_LOJA,
+               CAST('' AS VARCHAR(1)), C7_ITEM, C7_PRODUTO, C7_DESCRI, C7_UM,
+               C7_QUANT, C7_QUJE, C7_PRECO, C7_TOTAL, C7_VLDESC, C7_LOCAL,
+               C7_NUMSC, C7_DATPRF, C7_EMISSAO, C7_COND, C7_CC, C7_EMITIDO,
+               C7_NUMCOT, C7_CONTRA, C7_USER, C7_SOLICIT, C7_JUSTIFI,
+               C7_RESIDUO, C7_QTDACLA, C7_TIPO, C7_CONAPRO, R_E_C_N_O_
+        FROM dbo.SC7060
+        WHERE D_E_L_E_T_ = '' AND C7_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+
+        UNION ALL
+
+        SELECT '08', '08 - Neltech', C7_FILIAL, C7_NUM, C7_FORNECE, C7_LOJA,
+               CAST('' AS VARCHAR(1)), C7_ITEM, C7_PRODUTO, C7_DESCRI, C7_UM,
+               C7_QUANT, C7_QUJE, C7_PRECO, C7_TOTAL, C7_VLDESC, C7_LOCAL,
+               C7_NUMSC, C7_DATPRF, C7_EMISSAO, C7_COND, C7_CC, C7_EMITIDO,
+               C7_NUMCOT, C7_CONTRA, C7_USER, C7_SOLICIT, C7_JUSTIFI,
+               C7_RESIDUO, C7_QTDACLA, C7_TIPO, C7_CONAPRO, R_E_C_N_O_
+        FROM dbo.SC7080
+        WHERE D_E_L_E_T_ = '' AND C7_EMISSAO BETWEEN @MV_PAR01 AND @MV_PAR02
+    ),
+    A2_ORIGEM AS
+    (
+        SELECT '20' AS GRUPO_COD, A2_COD, A2_LOJA, A2_NOME, A2_NREDUZ, A2_CGC
+        FROM dbo.SA2200 WHERE D_E_L_E_T_ = ''
+        UNION ALL
+        SELECT '23', A2_COD, A2_LOJA, A2_NOME, A2_NREDUZ, A2_CGC
+        FROM dbo.SA2230 WHERE D_E_L_E_T_ = ''
+        UNION ALL
+        SELECT '06', A2_COD, A2_LOJA, A2_NOME, A2_NREDUZ, A2_CGC
+        FROM dbo.SA2060 WHERE D_E_L_E_T_ = ''
+        UNION ALL
+        SELECT '08', A2_COD, A2_LOJA, A2_NOME, A2_NREDUZ, A2_CGC
+        FROM dbo.SA2080 WHERE D_E_L_E_T_ = ''
+    ),
+    C7 AS
     (
         SELECT
-            '20' AS GRUPO_EMPRESA, 'GRUPO AGRONELLI' AS NOME_GRUPO,
-            RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH, RA_CODFUNC, RA_DEPTO,
-            RA_AG_LID, RA_AG_GER, RA_AG_GER2, RA_AG_DIR
-        FROM dbo.SRA200
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
-
-        UNION ALL
-
-        SELECT
-            '23', 'MTP', RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH,
-            RA_CODFUNC, RA_DEPTO, RA_AG_LID, RA_AG_GER, RA_AG_GER2, RA_AG_DIR
-        FROM dbo.SRA230
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
-
-        UNION ALL
-
-        SELECT
-            '06', 'IADS', RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH,
-            RA_CODFUNC, RA_DEPTO, RA_AG_LID, RA_AG_GER, RA_AG_GER2, RA_AG_DIR
-        FROM dbo.SRA060
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
-
-        UNION ALL
-
-        SELECT
-            '08', 'NELTECH', RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH,
-            RA_CODFUNC, RA_DEPTO, RA_AG_LID,
-            CAST('' AS VARCHAR(50)), CAST('' AS VARCHAR(50)), RA_AG_DIR
-        FROM dbo.SRA080
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
+            C7O.GRUPO_COD,
+            C7O.GRUPO_EMPRESA,
+            C7O.C7_FILIAL AS FILIAL,
+            C7O.C7_NUM AS NUM_PC,
+            A2.A2_COD AS COD_FORNECE,
+            A2.A2_LOJA AS LJA_FORNECE,
+            A2.A2_NOME AS NME_FORNECE,
+            A2.A2_NREDUZ AS NMR_FORNECE,
+            A2.A2_CGC AS CGC,
+            CASE C7O.C7_AG_STAT
+                WHEN '1' THEN 'Normal'
+                WHEN ''  THEN 'Normal'
+                WHEN '2' THEN 'Urgente'
+                WHEN '3' THEN 'Contrato'
+                WHEN '4' THEN 'Emergencial'
+                WHEN '5' THEN 'Regularização'
+                ELSE C7O.C7_AG_STAT
+            END AS TIPO,
+            C7O.C7_ITEM AS ITEM,
+            C7O.C7_PRODUTO AS COD_PRODUTO,
+            C7O.C7_DESCRI AS NME_PRODUTO,
+            C7O.C7_UM AS UM,
+            C7O.C7_QUANT AS QUANT,
+            C7O.C7_QUJE AS QUANT_ENTREGUE,
+            C7O.C7_QUANT - C7O.C7_QUJE AS QUANT_DIFF,
+            C7O.C7_PRECO AS PRECO_ATUAL,
+            C7O.C7_TOTAL AS TOTAL,
+            C7O.C7_VLDESC AS VL_DESCONTO,
+            C7O.C7_LOCAL AS ARMAZEM,
+            C7O.C7_NUMSC AS NUM_SC,
+            C7O.C7_DATPRF AS DT_NECESSIDADE,
+            C7O.C7_EMISSAO AS DT_EMISSAO,
+            C7O.C7_COND AS PAGAMENTO,
+            C7O.C7_CC AS CC,
+            C7O.C7_EMITIDO AS IMPRESSO,
+            C7O.C7_NUMCOT AS COTACAO,
+            C7O.C7_CONTRA AS CONTRATO,
+            COALESCE(NULLIF(RTRIM(U.USR_NOME), ''), RTRIM(C7O.C7_USER)) AS COMPRADOR,
+            C7O.C7_SOLICIT AS SOLICITANTE,
+            C7O.C7_JUSTIFI AS JUSTIFICATIVA,
+            C7O.R_E_C_N_O_ AS RECNO,
+            CASE
+                WHEN C7O.C7_QUJE = C7O.C7_QUANT THEN 'Recebido'
+                WHEN C7O.C7_RESIDUO <> '' THEN 'Eliminado Residuo'
+                WHEN C7O.C7_QTDACLA <> 0 THEN 'Recebido Prenota'
+                WHEN C7O.C7_TIPO <> 1 THEN 'Contrato Parceria'
+                WHEN C7O.C7_CONTRA <> '' THEN 'Gestao de Contratos'
+                WHEN C7O.C7_CONAPRO = 'R' THEN 'Rejeitado Alçada'
+                WHEN C7O.C7_CONAPRO = 'B' AND C7O.C7_QUJE < C7O.C7_QUANT THEN 'Alçada de Aprov.'
+                WHEN C7O.C7_QUJE = 0 AND C7O.C7_QTDACLA = 0
+                     AND C7O.C7_CONAPRO <> 'B' AND C7O.C7_TIPO = 1
+                     AND C7O.C7_RESIDUO = '' THEN 'Pendente'
+                WHEN C7O.C7_QUJE > 0 AND C7O.C7_QTDACLA = 0
+                     AND C7O.C7_CONAPRO <> 'B' AND C7O.C7_TIPO = 1
+                     AND C7O.C7_RESIDUO = '' THEN 'Recebido Parcial'
+                ELSE 'SEM STATUS'
+            END AS STATUS
+        FROM C7_ORIGEM C7O
+        INNER JOIN A2_ORIGEM A2
+            ON A2.GRUPO_COD = C7O.GRUPO_COD
+           AND A2.A2_COD = C7O.C7_FORNECE
+           AND A2.A2_LOJA = C7O.C7_LOJA
+        LEFT JOIN dbo.SYS_USR U
+            ON U.USR_ID = C7O.C7_USER
+           AND U.D_E_L_E_T_ = ''
     ),
-    CADASTRO_CURSOS AS
+    PRODUTOS AS
     (
-        SELECT '20' AS GRUPO_EMPRESA, RA1_CURSO, RA1_DESC
-        FROM dbo.RA1200 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
-        UNION ALL
-        SELECT '23', RA1_CURSO, RA1_DESC
-        FROM dbo.RA1230 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
-        UNION ALL
-        SELECT '06', RA1_CURSO, RA1_DESC
-        FROM dbo.RA1060 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
-        UNION ALL
-        SELECT '08', RA1_CURSO, RA1_DESC
-        FROM dbo.RA1080 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+        SELECT DISTINCT GRUPO_COD, COD_PRODUTO
+        FROM C7
     ),
-    CURSOS_FUNCIONARIO_RA4 AS
+    D1_ORIGEM AS
     (
-        SELECT '20' AS GRUPO_EMPRESA, RA4_FILIAL, RA4_MAT, RA4_CURSO,
-               RA4_VALIDA, RA4_DATAIN, RA4_DATAFI, RA4_HORAS,
-               RA4_STATUS, R_E_C_N_O_ AS RECNO_RA4
-        FROM dbo.RA4200 WHERE D_E_L_E_T_ = ''
+        SELECT '20' AS GRUPO_COD, D1_FILIAL, D1_PEDIDO, D1_ITEMPC, D1_DTDIGIT
+        FROM dbo.SD1200 WHERE D_E_L_E_T_ = ''
         UNION ALL
-        SELECT '23', RA4_FILIAL, RA4_MAT, RA4_CURSO, RA4_VALIDA,
-               RA4_DATAIN, RA4_DATAFI, RA4_HORAS, RA4_STATUS, R_E_C_N_O_
-        FROM dbo.RA4230 WHERE D_E_L_E_T_ = ''
+        SELECT '23', D1_FILIAL, D1_PEDIDO, D1_ITEMPC, D1_DTDIGIT
+        FROM dbo.SD1230 WHERE D_E_L_E_T_ = ''
         UNION ALL
-        SELECT '06', RA4_FILIAL, RA4_MAT, RA4_CURSO, RA4_VALIDA,
-               RA4_DATAIN, RA4_DATAFI, RA4_HORAS, RA4_STATUS, R_E_C_N_O_
-        FROM dbo.RA4060 WHERE D_E_L_E_T_ = ''
+        SELECT '06', D1_FILIAL, D1_PEDIDO, D1_ITEMPC, D1_DTDIGIT
+        FROM dbo.SD1060 WHERE D_E_L_E_T_ = ''
         UNION ALL
-        SELECT '08', RA4_FILIAL, RA4_MAT, RA4_CURSO, RA4_VALIDA,
-               RA4_DATAIN, RA4_DATAFI, RA4_HORAS, RA4_STATUS, R_E_C_N_O_
-        FROM dbo.RA4080 WHERE D_E_L_E_T_ = ''
+        SELECT '08', D1_FILIAL, D1_PEDIDO, D1_ITEMPC, D1_DTDIGIT
+        FROM dbo.SD1080 WHERE D_E_L_E_T_ = ''
     ),
-    CURSOS_FUNCIONARIO_BASE AS
+    D1 AS
     (
-        SELECT
-            RA4.GRUPO_EMPRESA,
-            RA4.RA4_FILIAL,
-            RA4.RA4_MAT,
-            RA4.RA4_CURSO,
-            CC.RA1_DESC,
-            LEFT(CC.RA1_DESC, 5) AS GRUPO_DESCRICAO_CURSO,
-            RA4.RA4_VALIDA,
-            RA4.RA4_DATAIN,
-            RA4.RA4_DATAFI,
-            RA4.RA4_HORAS,
-            RA4.RA4_STATUS,
-            RA4.RECNO_RA4
-        FROM CURSOS_FUNCIONARIO_RA4 AS RA4
-        INNER JOIN CADASTRO_CURSOS AS CC
-            ON CC.GRUPO_EMPRESA = RA4.GRUPO_EMPRESA
-           AND CC.RA1_CURSO = RA4.RA4_CURSO
+        SELECT GRUPO_COD, D1_FILIAL, D1_PEDIDO, D1_ITEMPC,
+               MAX(D1_DTDIGIT) AS DT_DIGITACAO
+        FROM D1_ORIGEM
+        GROUP BY GRUPO_COD, D1_FILIAL, D1_PEDIDO, D1_ITEMPC
     ),
-    CURSOS_FUNCIONARIO AS
+    CR_ORIGEM AS
     (
-        SELECT
-            GRUPO_EMPRESA,
-            RA4_FILIAL,
-            RA4_MAT,
-            RA4_CURSO,
-            RA1_DESC,
-            GRUPO_DESCRICAO_CURSO,
-            RA4_VALIDA,
-            RA4_DATAIN,
-            RA4_DATAFI,
-            RA4_HORAS,
-            RA4_STATUS,
-            RECNO_RA4
-        FROM
-        (
-            SELECT
-                CFB.*,
-                ROW_NUMBER() OVER
-                (
-                    PARTITION BY
-                        CFB.GRUPO_EMPRESA,
-                        CFB.RA4_FILIAL,
-                        CFB.RA4_MAT,
-                        CFB.GRUPO_DESCRICAO_CURSO
-                    ORDER BY
-                        TRY_CONVERT(DATE, NULLIF(CFB.RA4_VALIDA, ''), 112) DESC,
-                        CFB.RECNO_RA4 DESC
-                ) AS ORDEM_VENCIMENTO
-            FROM CURSOS_FUNCIONARIO_BASE AS CFB
-        ) AS RANQUEADOS
-        WHERE ORDEM_VENCIMENTO = 1
+        SELECT '20' AS GRUPO_COD, CR_FILIAL, CR_NUM, CR_DATALIB, CR_TIPO, CR_STATUS
+        FROM dbo.SCR200 WHERE D_E_L_E_T_ = ''
+        UNION ALL
+        SELECT '23', CR_FILIAL, CR_NUM, CR_DATALIB, CR_TIPO, CR_STATUS
+        FROM dbo.SCR230 WHERE D_E_L_E_T_ = ''
+        UNION ALL
+        SELECT '06', CR_FILIAL, CR_NUM, CR_DATALIB, CR_TIPO, CR_STATUS
+        FROM dbo.SCR060 WHERE D_E_L_E_T_ = ''
+        UNION ALL
+        SELECT '08', CR_FILIAL, CR_NUM, CR_DATALIB, CR_TIPO, CR_STATUS
+        FROM dbo.SCR080 WHERE D_E_L_E_T_ = ''
     ),
-    FUNCOES AS
+    CR AS
     (
-        SELECT '20' AS GRUPO_EMPRESA, RJ_FUNCAO, RJ_DESC, RJ_CARGO
-        FROM dbo.SRJ200 WHERE D_E_L_E_T_ = '' AND RJ_FILIAL = ''
-        UNION ALL
-        SELECT '23', RJ_FUNCAO, RJ_DESC, RJ_CARGO
-        FROM dbo.SRJ230 WHERE D_E_L_E_T_ = '' AND RJ_FILIAL = ''
-        UNION ALL
-        SELECT '06', RJ_FUNCAO, RJ_DESC, RJ_CARGO
-        FROM dbo.SRJ060 WHERE D_E_L_E_T_ = '' AND RJ_FILIAL = ''
-        UNION ALL
-        SELECT '08', RJ_FUNCAO, RJ_DESC, RJ_CARGO
-        FROM dbo.SRJ080 WHERE D_E_L_E_T_ = '' AND RJ_FILIAL = ''
+        SELECT GRUPO_COD, CR_FILIAL, CR_NUM, MAX(CR_DATALIB) AS DT_LIBERADO
+        FROM CR_ORIGEM
+        WHERE CR_TIPO = 'PC'
+        GROUP BY GRUPO_COD, CR_FILIAL, CR_NUM
+        HAVING MIN(CR_STATUS) = '03'
     ),
-    DEPARTAMENTOS AS
+    CR2 AS
     (
-        SELECT '20' AS GRUPO_EMPRESA, QB_DEPTO, QB_DESCRIC
-        FROM dbo.SQB200 WHERE D_E_L_E_T_ = '' AND QB_FILIAL = ''
-        UNION ALL
-        SELECT '23', QB_DEPTO, QB_DESCRIC
-        FROM dbo.SQB230 WHERE D_E_L_E_T_ = '' AND QB_FILIAL = ''
-        UNION ALL
-        SELECT '06', QB_DEPTO, QB_DESCRIC
-        FROM dbo.SQB060 WHERE D_E_L_E_T_ = '' AND QB_FILIAL = ''
-        UNION ALL
-        SELECT '08', QB_DEPTO, QB_DESCRIC
-        FROM dbo.SQB080 WHERE D_E_L_E_T_ = '' AND QB_FILIAL = ''
+        SELECT GRUPO_COD, CR_FILIAL, CR_NUM, MAX(CR_DATALIB) AS DT_LIBERADO
+        FROM CR_ORIGEM
+        WHERE CR_TIPO = 'SC'
+        GROUP BY GRUPO_COD, CR_FILIAL, CR_NUM
+        HAVING MIN(CR_STATUS) = '03'
+    ),
+    B1_ORIGEM AS
+    (
+        SELECT '20' AS GRUPO_COD, B1_COD, B1_GRUPO FROM dbo.SB1200 WHERE D_E_L_E_T_ = ''
+        UNION ALL SELECT '23', B1_COD, B1_GRUPO FROM dbo.SB1230 WHERE D_E_L_E_T_ = ''
+        UNION ALL SELECT '06', B1_COD, B1_GRUPO FROM dbo.SB1060 WHERE D_E_L_E_T_ = ''
+        UNION ALL SELECT '08', B1_COD, B1_GRUPO FROM dbo.SB1080 WHERE D_E_L_E_T_ = ''
+    ),
+    BM_ORIGEM AS
+    (
+        SELECT '20' AS GRUPO_COD, BM_GRUPO, BM_DESC FROM dbo.SBM200 WHERE D_E_L_E_T_ = ''
+        UNION ALL SELECT '23', BM_GRUPO, BM_DESC FROM dbo.SBM230 WHERE D_E_L_E_T_ = ''
+        UNION ALL SELECT '06', BM_GRUPO, BM_DESC FROM dbo.SBM060 WHERE D_E_L_E_T_ = ''
+        UNION ALL SELECT '08', BM_GRUPO, BM_DESC FROM dbo.SBM080 WHERE D_E_L_E_T_ = ''
+    ),
+    B1 AS
+    (
+        SELECT B1.GRUPO_COD, B1.B1_COD,
+               RTRIM(BM.BM_GRUPO) + '-' + RTRIM(BM.BM_DESC) AS GRUPO
+        FROM B1_ORIGEM B1
+        INNER JOIN PRODUTOS P
+            ON P.GRUPO_COD = B1.GRUPO_COD
+           AND P.COD_PRODUTO = B1.B1_COD
+        INNER JOIN BM_ORIGEM BM
+            ON BM.GRUPO_COD = B1.GRUPO_COD
+           AND BM.BM_GRUPO = B1.B1_GRUPO
     )
     SELECT
-        F.GRUPO_EMPRESA,
-        F.NOME_GRUPO,
-        RTRIM(F.RA_FILIAL) AS FILIAL,
-        RTRIM(F.RA_MAT) AS MATRICULA,
-        RTRIM(F.RA_NOME) AS FUNCIONARIO,
-        F.RA_SITFOLH AS STATUS_COLABORADOR,
-        CASE F.RA_SITFOLH
-            WHEN ' ' THEN 'NORMAL'
-            WHEN 'A' THEN 'AFASTADO TEMP.'
-            WHEN 'D' THEN 'DEMITIDO'
-            WHEN 'F' THEN 'FERIAS'
-            WHEN 'T' THEN 'TRANSFERIDO'
-            ELSE CONCAT('OUTRO: ', RTRIM(F.RA_SITFOLH))
-        END AS DESCRICAO_STATUS_COLABORADOR,
-        RTRIM(F.RA_CODFUNC) AS CODIGO_FUNCAO,
-        RTRIM(FU.RJ_DESC) AS FUNCAO,
-        RTRIM(F.RA_DEPTO) AS CODIGO_DEPARTAMENTO,
-        RTRIM(DE.QB_DESCRIC) AS DEPARTAMENTO,
-        RTRIM(F.RA_AG_LID) AS GESTOR,
-        RTRIM(F.RA_AG_GER) AS GERENCIA_N1,
-        RTRIM(F.RA_AG_DIR) AS DIRETORIA,
-        RTRIM(CF.RA4_CURSO) AS CODIGO_TREINAMENTO,
-        RTRIM(CF.RA1_DESC) AS TREINAMENTO,
-        CONVERT(VARCHAR(10), TRY_CONVERT(DATE, NULLIF(CF.RA4_DATAIN, ''), 112), 103) AS DATA_INICIO,
-        CONVERT(VARCHAR(10), TRY_CONVERT(DATE, NULLIF(CF.RA4_DATAFI, ''), 112), 103) AS DATA_FIM,
-        CONVERT(DECIMAL(10, 2), CF.RA4_HORAS) AS CARGA_HORARIA,
-        CONVERT(VARCHAR(10), TRY_CONVERT(DATE, NULLIF(CF.RA4_VALIDA, ''), 112), 103) AS DATA_VENCIMENTO,
-        DATEDIFF
+        C7.GRUPO_EMPRESA,
+        C7.STATUS,
+        C7.FILIAL,
+        C7.NUM_PC,
+        C7.COD_FORNECE,
+        C7.LJA_FORNECE,
+        C7.NME_FORNECE,
+        C7.NMR_FORNECE,
+        C7.CGC,
+        C7.TIPO,
+        C7.ITEM,
+        C7.COD_PRODUTO,
+        C7.NME_PRODUTO,
+        B1.GRUPO,
+        C7.UM,
+        C7.QUANT,
+        C7.QUANT_ENTREGUE,
+        C7.QUANT_DIFF,
+        COALESCE(ULTIMO_PC.ULTIMO_PRECO, C7.PRECO_ATUAL) AS ULTIMO_PRECO,
+        C7.PRECO_ATUAL,
+        C7.TOTAL,
+        C7.VL_DESCONTO,
+        C7.ARMAZEM,
+        C7.NUM_SC,
+        CONVERT(VARCHAR(10), CONVERT(DATE, C7.DT_NECESSIDADE, 112), 103) AS DT_NECESSIDADE,
+        CONVERT(VARCHAR(10), CONVERT(DATE, C7.DT_EMISSAO, 112), 103) AS DT_EMISSAO,
+        CONVERT(VARCHAR(10), CONVERT(DATE, CR2.DT_LIBERADO, 112), 103) AS DT_LIBERADO_SC,
+        CONVERT(VARCHAR(10), CONVERT(DATE, CR.DT_LIBERADO, 112), 103) AS DT_LIBERADO_PC,
+        CONVERT(VARCHAR(10), CONVERT(DATE, D1.DT_DIGITACAO, 112), 103) AS DT_DIGITACAO,
+        C7.PAGAMENTO,
+        C7.CC,
+        C7.IMPRESSO,
+        C7.COTACAO,
+        C7.CONTRATO,
+        C7.COMPRADOR,
+        C7.SOLICITANTE,
+        C7.JUSTIFICATIVA
+    FROM C7
+    LEFT JOIN D1
+        ON D1.GRUPO_COD = C7.GRUPO_COD
+       AND D1.D1_FILIAL = C7.FILIAL
+       AND D1.D1_PEDIDO = C7.NUM_PC
+       AND D1.D1_ITEMPC = C7.ITEM
+    LEFT JOIN CR
+        ON CR.GRUPO_COD = C7.GRUPO_COD
+       AND CR.CR_FILIAL = C7.FILIAL
+       AND CR.CR_NUM = C7.NUM_PC
+    LEFT JOIN CR2
+        ON CR2.GRUPO_COD = C7.GRUPO_COD
+       AND CR2.CR_FILIAL = C7.FILIAL
+       AND CR2.CR_NUM = C7.NUM_SC
+    LEFT JOIN B1
+        ON B1.GRUPO_COD = C7.GRUPO_COD
+       AND B1.B1_COD = C7.COD_PRODUTO
+    OUTER APPLY
+    (
+        SELECT TOP (1) H.C7_PRECO AS ULTIMO_PRECO
+        FROM
         (
-            DAY,
-            CONVERT(DATE, GETDATE()),
-            TRY_CONVERT(DATE, NULLIF(CF.RA4_VALIDA, ''), 112)
-        ) AS DIAS_PARA_VENCER,
-        CASE
-            WHEN NULLIF(CF.RA4_VALIDA, '') IS NULL THEN 'SEM VENCIMENTO'
-            WHEN TRY_CONVERT(DATE, CF.RA4_VALIDA, 112) < CONVERT(DATE, GETDATE()) THEN 'VENCIDO'
-            WHEN TRY_CONVERT(DATE, CF.RA4_VALIDA, 112) = CONVERT(DATE, GETDATE()) THEN 'VENCE HOJE'
-            ELSE 'A VENCER'
-        END AS STATUS_VENCIMENTO,
-        CASE
-            WHEN TRY_CONVERT(DATE, NULLIF(CF.RA4_VALIDA, ''), 112) < CONVERT(DATE, GETDATE())
-            THEN DATEDIFF
-                 (
-                     DAY,
-                     TRY_CONVERT(DATE, CF.RA4_VALIDA, 112),
-                     CONVERT(DATE, GETDATE())
-                 )
-            ELSE 0
-        END AS DIAS_VENCIDO
-    FROM FUNCIONARIOS AS F
-    INNER JOIN CURSOS_FUNCIONARIO AS CF
-        ON CF.GRUPO_EMPRESA = F.GRUPO_EMPRESA
-       AND CF.RA4_FILIAL = F.RA_FILIAL
-       AND CF.RA4_MAT = F.RA_MAT
-    LEFT JOIN FUNCOES AS FU
-        ON FU.GRUPO_EMPRESA = F.GRUPO_EMPRESA
-       AND FU.RJ_FUNCAO = F.RA_CODFUNC
-    LEFT JOIN DEPARTAMENTOS AS DE
-        ON DE.GRUPO_EMPRESA = F.GRUPO_EMPRESA
-       AND DE.QB_DEPTO = F.RA_DEPTO
-    WHERE (@FUNCIONARIO IS NULL OR F.RA_NOME LIKE '%' + @FUNCIONARIO + '%')
-      AND (@TREINAMENTO IS NULL OR CF.RA1_DESC LIKE '%' + @TREINAMENTO + '%')
-      AND
-      (
-          @NOME_GERENCIA IS NULL
-          OR F.RA_AG_LID LIKE '%' + @NOME_GERENCIA + '%'
-          OR F.RA_AG_GER LIKE '%' + @NOME_GERENCIA + '%'
-          OR F.RA_AG_GER2 LIKE '%' + @NOME_GERENCIA + '%'
-          OR F.RA_AG_DIR LIKE '%' + @NOME_GERENCIA + '%'
-      )
-    ORDER BY
-        F.GRUPO_EMPRESA,
-        F.RA_FILIAL,
-        F.RA_NOME,
-        CF.RA1_DESC,
-        CF.RA4_VALIDA,
-        CF.RECNO_RA4;
+            SELECT C7_FILIAL, C7_NUM, C7_PRODUTO, C7_EMISSAO, C7_PRECO, R_E_C_N_O_
+            FROM dbo.SC7200 WHERE C7.GRUPO_COD = '20' AND D_E_L_E_T_ = ''
+            UNION ALL
+            SELECT C7_FILIAL, C7_NUM, C7_PRODUTO, C7_EMISSAO, C7_PRECO, R_E_C_N_O_
+            FROM dbo.SC7230 WHERE C7.GRUPO_COD = '23' AND D_E_L_E_T_ = ''
+            UNION ALL
+            SELECT C7_FILIAL, C7_NUM, C7_PRODUTO, C7_EMISSAO, C7_PRECO, R_E_C_N_O_
+            FROM dbo.SC7060 WHERE C7.GRUPO_COD = '06' AND D_E_L_E_T_ = ''
+            UNION ALL
+            SELECT C7_FILIAL, C7_NUM, C7_PRODUTO, C7_EMISSAO, C7_PRECO, R_E_C_N_O_
+            FROM dbo.SC7080 WHERE C7.GRUPO_COD = '08' AND D_E_L_E_T_ = ''
+        ) H
+        WHERE H.C7_FILIAL = C7.FILIAL
+          AND H.C7_PRODUTO = C7.COD_PRODUTO
+          AND H.C7_NUM <> C7.NUM_PC
+          AND (H.C7_EMISSAO < C7.DT_EMISSAO
+               OR (H.C7_EMISSAO = C7.DT_EMISSAO AND H.R_E_C_N_O_ < C7.RECNO))
+        ORDER BY H.C7_EMISSAO DESC, H.R_E_C_N_O_ DESC
+    ) ULTIMO_PC
+    OPTION (RECOMPILE);
 END;
-
 
 
 -------------------- CAPTURA PROCEDURES 
@@ -293,11 +323,11 @@ END;
 --FROM sys.sql_modules sm
 --JOIN sys.objects o
 --    ON sm.object_id = o.object_id
---WHERE o.name = 'SP_HDS3720_RTRM01';
+--WHERE o.name = 'SP_HDS3418_RCOM04';
 --
 --
 -------------------- PERMISSAO PROCEDURE
-GRANT EXECUTE ON dbo.SP_HDS3720_RTRM01
+GRANT EXECUTE ON dbo.SP_HDS3418_RCOM04
 TO [CLT171703totvsread];
 --
 
