@@ -4,9 +4,9 @@
                   organizacional e vencimento, em todos os grupos Agronelli.
   Banco.........: CCW2SA_171703_PR_PD
   Conexao.......: Agronelli_tst_local
-  Granularidade.: Uma linha por grupo/filial/funcionario/curso, mantendo a
-                  maior data de vencimento da RA4.
-  Validado em...: 2026-08-27, somente leitura, via MCP dbcode.
+  Granularidade.: Uma linha por grupo/filial/funcionario/primeiras 5 posicoes
+                  da descricao do curso, mantendo a maior validade da RA4.
+  Validado em...: 2026-08-28, somente leitura, via MCP dbcode.
 
   Grupos incluidos:
     20 - Grupo Agronelli
@@ -27,7 +27,7 @@
     STATUS_COLABORADOR retorna o valor original de SRA.RA_SITFOLH.
     DESCRICAO_STATUS_COLABORADOR traduz o dominio confirmado na SX5/31:
     espaco=Normal, A=Afastado, D=Demitido, F=Ferias e T=Transferido.
-    Funcionarios demitidos (RA_SITFOLH = 'D') sao excluidos do resultado.
+    Somente funcionarios normais (espaco) e em ferias (F) sao retornados.
 
   Observacao:
     O grupo 08 nao possui RA_AG_GER/RA_AG_GER2 no objeto fisico. Nesses casos,
@@ -64,7 +64,7 @@ BEGIN
             RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH, RA_CODFUNC, RA_DEPTO,
             RA_AG_LID, RA_AG_GER, RA_AG_GER2, RA_AG_DIR
         FROM dbo.SRA200
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH <> 'D'
+        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
 
         UNION ALL
 
@@ -72,7 +72,7 @@ BEGIN
             '23', 'MTP', RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH,
             RA_CODFUNC, RA_DEPTO, RA_AG_LID, RA_AG_GER, RA_AG_GER2, RA_AG_DIR
         FROM dbo.SRA230
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH <> 'D'
+        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
 
         UNION ALL
 
@@ -80,7 +80,7 @@ BEGIN
             '06', 'IADS', RA_FILIAL, RA_MAT, RA_NOME, RA_SITFOLH,
             RA_CODFUNC, RA_DEPTO, RA_AG_LID, RA_AG_GER, RA_AG_GER2, RA_AG_DIR
         FROM dbo.SRA060
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH <> 'D'
+        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
 
         UNION ALL
 
@@ -89,9 +89,23 @@ BEGIN
             RA_CODFUNC, RA_DEPTO, RA_AG_LID,
             CAST('' AS VARCHAR(50)), CAST('' AS VARCHAR(50)), RA_AG_DIR
         FROM dbo.SRA080
-        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH <> 'D'
+        WHERE D_E_L_E_T_ = '' AND RA_SITFOLH IN (' ', 'F')
     ),
-    CURSOS_FUNCIONARIO_BASE AS
+    CADASTRO_CURSOS AS
+    (
+        SELECT '20' AS GRUPO_EMPRESA, RA1_CURSO, RA1_DESC
+        FROM dbo.RA1200 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+        UNION ALL
+        SELECT '23', RA1_CURSO, RA1_DESC
+        FROM dbo.RA1230 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+        UNION ALL
+        SELECT '06', RA1_CURSO, RA1_DESC
+        FROM dbo.RA1060 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+        UNION ALL
+        SELECT '08', RA1_CURSO, RA1_DESC
+        FROM dbo.RA1080 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+    ),
+    CURSOS_FUNCIONARIO_RA4 AS
     (
         SELECT '20' AS GRUPO_EMPRESA, RA4_FILIAL, RA4_MAT, RA4_CURSO,
                RA4_VALIDA, RA4_DATAIN, RA4_DATAFI, RA4_HORAS,
@@ -110,6 +124,26 @@ BEGIN
                RA4_DATAIN, RA4_DATAFI, RA4_HORAS, RA4_STATUS, R_E_C_N_O_
         FROM dbo.RA4080 WHERE D_E_L_E_T_ = ''
     ),
+    CURSOS_FUNCIONARIO_BASE AS
+    (
+        SELECT
+            RA4.GRUPO_EMPRESA,
+            RA4.RA4_FILIAL,
+            RA4.RA4_MAT,
+            RA4.RA4_CURSO,
+            CC.RA1_DESC,
+            LEFT(CC.RA1_DESC, 5) AS GRUPO_DESCRICAO_CURSO,
+            RA4.RA4_VALIDA,
+            RA4.RA4_DATAIN,
+            RA4.RA4_DATAFI,
+            RA4.RA4_HORAS,
+            RA4.RA4_STATUS,
+            RA4.RECNO_RA4
+        FROM CURSOS_FUNCIONARIO_RA4 AS RA4
+        INNER JOIN CADASTRO_CURSOS AS CC
+            ON CC.GRUPO_EMPRESA = RA4.GRUPO_EMPRESA
+           AND CC.RA1_CURSO = RA4.RA4_CURSO
+    ),
     CURSOS_FUNCIONARIO AS
     (
         SELECT
@@ -117,6 +151,8 @@ BEGIN
             RA4_FILIAL,
             RA4_MAT,
             RA4_CURSO,
+            RA1_DESC,
+            GRUPO_DESCRICAO_CURSO,
             RA4_VALIDA,
             RA4_DATAIN,
             RA4_DATAFI,
@@ -133,7 +169,7 @@ BEGIN
                         CFB.GRUPO_EMPRESA,
                         CFB.RA4_FILIAL,
                         CFB.RA4_MAT,
-                        CFB.RA4_CURSO
+                        CFB.GRUPO_DESCRICAO_CURSO
                     ORDER BY
                         TRY_CONVERT(DATE, NULLIF(CFB.RA4_VALIDA, ''), 112) DESC,
                         CFB.RECNO_RA4 DESC
@@ -141,20 +177,6 @@ BEGIN
             FROM CURSOS_FUNCIONARIO_BASE AS CFB
         ) AS RANQUEADOS
         WHERE ORDEM_VENCIMENTO = 1
-    ),
-    CADASTRO_CURSOS AS
-    (
-        SELECT '20' AS GRUPO_EMPRESA, RA1_CURSO, RA1_DESC
-        FROM dbo.RA1200 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
-        UNION ALL
-        SELECT '23', RA1_CURSO, RA1_DESC
-        FROM dbo.RA1230 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
-        UNION ALL
-        SELECT '06', RA1_CURSO, RA1_DESC
-        FROM dbo.RA1060 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
-        UNION ALL
-        SELECT '08', RA1_CURSO, RA1_DESC
-        FROM dbo.RA1080 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
     ),
     FUNCOES AS
     (
@@ -207,7 +229,7 @@ BEGIN
         RTRIM(F.RA_AG_GER) AS GERENCIA_N1,
         RTRIM(F.RA_AG_DIR) AS DIRETORIA,
         RTRIM(CF.RA4_CURSO) AS CODIGO_TREINAMENTO,
-        RTRIM(CC.RA1_DESC) AS TREINAMENTO,
+        RTRIM(CF.RA1_DESC) AS TREINAMENTO,
         CONVERT(VARCHAR(10), TRY_CONVERT(DATE, NULLIF(CF.RA4_DATAIN, ''), 112), 103) AS DATA_INICIO,
         CONVERT(VARCHAR(10), TRY_CONVERT(DATE, NULLIF(CF.RA4_DATAFI, ''), 112), 103) AS DATA_FIM,
         CONVERT(DECIMAL(10, 2), CF.RA4_HORAS) AS CARGA_HORARIA,
@@ -239,9 +261,6 @@ BEGIN
         ON CF.GRUPO_EMPRESA = F.GRUPO_EMPRESA
        AND CF.RA4_FILIAL = F.RA_FILIAL
        AND CF.RA4_MAT = F.RA_MAT
-    LEFT JOIN CADASTRO_CURSOS AS CC
-        ON CC.GRUPO_EMPRESA = CF.GRUPO_EMPRESA
-       AND CC.RA1_CURSO = CF.RA4_CURSO
     LEFT JOIN FUNCOES AS FU
         ON FU.GRUPO_EMPRESA = F.GRUPO_EMPRESA
        AND FU.RJ_FUNCAO = F.RA_CODFUNC
@@ -249,7 +268,7 @@ BEGIN
         ON DE.GRUPO_EMPRESA = F.GRUPO_EMPRESA
        AND DE.QB_DEPTO = F.RA_DEPTO
     WHERE (@FUNCIONARIO IS NULL OR F.RA_NOME LIKE '%' + @FUNCIONARIO + '%')
-      AND (@TREINAMENTO IS NULL OR CC.RA1_DESC LIKE '%' + @TREINAMENTO + '%')
+      AND (@TREINAMENTO IS NULL OR CF.RA1_DESC LIKE '%' + @TREINAMENTO + '%')
       AND
       (
           @NOME_GERENCIA IS NULL
@@ -262,7 +281,7 @@ BEGIN
         F.GRUPO_EMPRESA,
         F.RA_FILIAL,
         F.RA_NOME,
-        CC.RA1_DESC,
+        CF.RA1_DESC,
         CF.RA4_VALIDA,
         CF.RECNO_RA4;
 END;

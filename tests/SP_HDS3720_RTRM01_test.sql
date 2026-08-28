@@ -1,14 +1,16 @@
 /*=============================================================================
   Teste.........: dbo.SP_HDS3720_RTRM01
   Banco.........: CCW2SA_171703_PR_PD
-  Validado em...: 2026-08-27, somente leitura, via MCP dbcode.
+  Validado em...: 2026-08-28, somente leitura, via MCP dbcode.
 
   Resultados esperados na data da validacao:
     RA4 ativos por grupo: 20=2501, 23=30, 06=12, 08=0.
     Todos os registros RA4 ativos encontraram SRA pela chave grupo/filial/mat.
-    A procedure preserva SRA.RA_SITFOLH e exclui apenas demitidos (codigo D).
-    A chave do resultado e grupo + filial + matricula + curso; repeticoes da
-    RA4 mantem a maior data de vencimento e, em empate, o maior R_E_C_N_O_.
+    A procedure preserva SRA.RA_SITFOLH e retorna somente normais (espaco)
+    e funcionarios em ferias (codigo F).
+    A chave do resultado e grupo + filial + matricula + 5 primeiras posicoes
+    da descricao do curso. A RA4 mantem a maior data de vencimento e, em
+    empate, o maior R_E_C_N_O_.
 
   Observacao: as contagens finais variam com admissoes, desligamentos e novos
   treinamentos. O teste reconcilia as etapas no estado atual do banco.
@@ -38,35 +40,36 @@ SELECT '06', RA_SITFOLH, COUNT(*) FROM dbo.SRA060 WHERE D_E_L_E_T_ = '' GROUP BY
 UNION ALL
 SELECT '08', RA_SITFOLH, COUNT(*) FROM dbo.SRA080 WHERE D_E_L_E_T_ = '' GROUP BY RA_SITFOLH;
 
--- 3. Reconcilia o INNER JOIN principal, exclui demitidos e confirma a chave.
+-- 3. Reconcilia o INNER JOIN principal, mantendo somente normais e ferias,
+-- e confirma a chave.
 WITH BASE AS
 (
     SELECT '20' AS GRUPO_EMPRESA, C.R_E_C_N_O_ AS RECNO_RA4
     FROM dbo.RA4200 AS C
     INNER JOIN dbo.SRA200 AS F
         ON F.RA_FILIAL = C.RA4_FILIAL AND F.RA_MAT = C.RA4_MAT
-       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH <> 'D'
+       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH IN (' ', 'F')
     WHERE C.D_E_L_E_T_ = ''
     UNION ALL
     SELECT '23', C.R_E_C_N_O_
     FROM dbo.RA4230 AS C
     INNER JOIN dbo.SRA230 AS F
         ON F.RA_FILIAL = C.RA4_FILIAL AND F.RA_MAT = C.RA4_MAT
-       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH <> 'D'
+       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH IN (' ', 'F')
     WHERE C.D_E_L_E_T_ = ''
     UNION ALL
     SELECT '06', C.R_E_C_N_O_
     FROM dbo.RA4060 AS C
     INNER JOIN dbo.SRA060 AS F
         ON F.RA_FILIAL = C.RA4_FILIAL AND F.RA_MAT = C.RA4_MAT
-       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH <> 'D'
+       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH IN (' ', 'F')
     WHERE C.D_E_L_E_T_ = ''
     UNION ALL
     SELECT '08', C.R_E_C_N_O_
     FROM dbo.RA4080 AS C
     INNER JOIN dbo.SRA080 AS F
         ON F.RA_FILIAL = C.RA4_FILIAL AND F.RA_MAT = C.RA4_MAT
-       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH <> 'D'
+       AND F.D_E_L_E_T_ = '' AND F.RA_SITFOLH IN (' ', 'F')
     WHERE C.D_E_L_E_T_ = ''
 )
 SELECT
@@ -156,8 +159,24 @@ SELECT
 FROM DATAS;
 
 -- 7. Valida a deduplicacao: deve retornar zero duplicacoes e zero escolhas
--- diferentes da maior validade existente para funcionario/curso.
-WITH CURSOS AS
+-- diferentes da maior validade para funcionario/grupo de descricao do curso.
+-- Esperado em 2026-08-28: 2031 linhas escolhidas (20=1991, 23=30, 06=10),
+-- zero duplicacoes e zero escolhas fora da maior validade.
+WITH CADASTRO_CURSOS AS
+(
+    SELECT '20' AS GRUPO_EMPRESA, RA1_CURSO, RA1_DESC
+    FROM dbo.RA1200 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+    UNION ALL
+    SELECT '23', RA1_CURSO, RA1_DESC
+    FROM dbo.RA1230 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+    UNION ALL
+    SELECT '06', RA1_CURSO, RA1_DESC
+    FROM dbo.RA1060 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+    UNION ALL
+    SELECT '08', RA1_CURSO, RA1_DESC
+    FROM dbo.RA1080 WHERE D_E_L_E_T_ = '' AND RA1_FILIAL = ''
+),
+CURSOS_RA4 AS
 (
     SELECT '20' AS GRUPO_EMPRESA, RA4_FILIAL, RA4_MAT, RA4_CURSO,
            RA4_VALIDA, R_E_C_N_O_ AS RECNO_RA4
@@ -172,17 +191,29 @@ WITH CURSOS AS
     SELECT '08', RA4_FILIAL, RA4_MAT, RA4_CURSO, RA4_VALIDA, R_E_C_N_O_
     FROM dbo.RA4080 WHERE D_E_L_E_T_ = ''
 ),
+CURSOS AS
+(
+    SELECT
+        RA4.*,
+        LEFT(CC.RA1_DESC, 5) AS GRUPO_DESCRICAO_CURSO
+    FROM CURSOS_RA4 AS RA4
+    INNER JOIN CADASTRO_CURSOS AS CC
+        ON CC.GRUPO_EMPRESA = RA4.GRUPO_EMPRESA
+       AND CC.RA1_CURSO = RA4.RA4_CURSO
+),
 RANQUEADOS AS
 (
     SELECT
         C.*,
         MAX(TRY_CONVERT(DATE, NULLIF(C.RA4_VALIDA, ''), 112)) OVER
         (
-            PARTITION BY C.GRUPO_EMPRESA, C.RA4_FILIAL, C.RA4_MAT, C.RA4_CURSO
+            PARTITION BY C.GRUPO_EMPRESA, C.RA4_FILIAL, C.RA4_MAT,
+                         C.GRUPO_DESCRICAO_CURSO
         ) AS MAIOR_VENCIMENTO,
         ROW_NUMBER() OVER
         (
-            PARTITION BY C.GRUPO_EMPRESA, C.RA4_FILIAL, C.RA4_MAT, C.RA4_CURSO
+            PARTITION BY C.GRUPO_EMPRESA, C.RA4_FILIAL, C.RA4_MAT,
+                         C.GRUPO_DESCRICAO_CURSO
             ORDER BY
                 TRY_CONVERT(DATE, NULLIF(C.RA4_VALIDA, ''), 112) DESC,
                 C.RECNO_RA4 DESC
@@ -196,7 +227,7 @@ ESCOLHIDOS AS
 SELECT
     COUNT(*) - COUNT(DISTINCT CONCAT
     (
-        GRUPO_EMPRESA, '|', RA4_FILIAL, '|', RA4_MAT, '|', RA4_CURSO
+        GRUPO_EMPRESA, '|', RA4_FILIAL, '|', RA4_MAT, '|', GRUPO_DESCRICAO_CURSO
     )) AS DUPLICACOES_APOS_RANKING,
     SUM
     (
