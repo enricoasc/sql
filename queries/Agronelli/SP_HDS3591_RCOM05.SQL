@@ -1,3 +1,50 @@
+/*=============================================================================
+  Objeto........: dbo.SP_HDS3720_RTRM01
+  Objetivo......: Listar treinamentos dos funcionarios, com estrutura
+                  organizacional e vencimento, em todos os grupos Agronelli.
+  Banco.........: CCW2SA_171703_PR_PD
+  Conexao.......: Agronelli_tst_local
+  Granularidade.: Uma linha por grupo/filial/funcionario/curso, mantendo a
+                  maior data de vencimento da RA4.
+  Validado em...: 2026-08-27, somente leitura, via MCP dbcode.
+
+  Grupos incluidos:
+    20 - Grupo Agronelli
+    23 - MTP
+    06 - IADS
+    08 - Neltech
+
+  Objetos validados:
+    RA4200/RA4230/RA4060/RA4080 - cursos dos funcionarios (exclusivas)
+    SRA200/SRA230/SRA060/SRA080 - funcionarios (exclusivas)
+    RA1200/RA1230/RA1060/RA1080 - cadastro de cursos (compartilhadas)
+    RA2200/RA2230/RA2060/RA2080 - treinamentos/turmas (exclusivas por filial)
+    SRJ200/SRJ230/SRJ060/SRJ080 - funcoes (compartilhadas)
+    SQB200/SQB230/SQB060/SQB080 - departamentos (compartilhadas)
+    SX2200/SX3200/SX5200         - compartilhamento, campos e dominios
+
+  Situacao do funcionario:
+    STATUS_COLABORADOR retorna o valor original de SRA.RA_SITFOLH.
+    DESCRICAO_STATUS_COLABORADOR traduz o dominio confirmado na SX5/31:
+    espaco=Normal, A=Afastado, D=Demitido, F=Ferias e T=Transferido.
+    Funcionarios demitidos (RA_SITFOLH = 'D') sao excluidos do resultado.
+
+  Observacao:
+    O grupo 08 nao possui RA_AG_GER/RA_AG_GER2 no objeto fisico. Nesses casos,
+    GERENCIA_N1 retorna vazia, sem inventar dados. RA_AG_GER2 continua sendo
+    considerado internamente pelo filtro de nome da gerencia nos demais grupos.
+
+    A RA2 foi validada, mas nao foi ligada ao resultado: em 2026-08-27 nenhum
+    registro ativo da RA4 encontrou RA2 pela chave completa validada
+    FILIAL + CALENDARIO + CURSO + TURMA. Relacionar somente pelo curso causaria
+    associacao ambigua entre turmas e poderia multiplicar registros.
+=============================================================================*/
+/* Exemplos:
+EXEC dbo.SP_HDS3720_RTRM01;
+EXEC dbo.SP_HDS3720_RTRM01 @FUNCIONARIO = 'JOAO';
+EXEC dbo.SP_HDS3720_RTRM01 @TREINAMENTO = 'NR';
+EXEC dbo.SP_HDS3720_RTRM01 @NOME_GERENCIA = 'ADRIANA';
+*/
 -- Novo script em TOTVS | PRD | TCLOUD | R.
 -- Autor: Enrico Augusto
 -- Data: 2 de jul. de 2026
@@ -199,3 +246,19 @@ OUTER APPLY
 OPTION (RECOMPILE);
 
 END;
+
+
+
+-------------------- CAPTURA PROCEDURES 
+--SELECT sm.definition
+--FROM sys.sql_modules sm
+--JOIN sys.objects o
+--    ON sm.object_id = o.object_id
+--WHERE o.name = 'SP_HDS3720_RTRM01';
+--
+--
+-------------------- PERMISSAO PROCEDURE
+GRANT EXECUTE ON dbo.SP_HDS3720_RTRM01
+TO [CLT171703totvsread];
+--
+
