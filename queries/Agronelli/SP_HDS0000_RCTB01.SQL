@@ -1,0 +1,367 @@
+/*=============================================================================
+  Objeto........: dbo.SP_HDS0000_RCTB01
+  Objetivo......: Razao por item contabil das contas tributarias permitidas,
+                  consolidando os grupos de empresa 06, 08, 20 e 23.
+  Banco.........: CCW2SA_171703_PR_PD
+  Conexao.......: Agronelli_tst_local
+  Granularidade.: Uma linha por partida, empresa, filial, conta e item contabil.
+  Validado em...: 2026-09-03, somente leitura, via MCP dbcode.
+
+  Objetos validados:
+    CT1060/CT1080/CT1200/CT1230 - Plano de contas (compartilhado)
+    CT2060/CT2080/CT2200/CT2230 - Lancamentos contabeis (exclusivo)
+
+  Regras:
+    - @DATA_INI e @DATA_FIM sao obrigatorias, no formato dd/mm/aaaa.
+    - Por seguranca, cada execucao aceita um periodo inferior a tres meses.
+    - Uma partida devedora gera valor positivo; uma partida credora, negativo.
+    - O item vem de CT2_ITEMD na partida devedora e de CT2_ITEMC na credora.
+    - O saldo anterior considera todos os lancamentos anteriores a @DATA_INI.
+    - Nos grupos 20 e 23, o escopo tributario usa uma lista fechada de contas.
+      Nos grupos 06 e 08, parte das contas sinteticas descritas como tributos ou
+      impostos a recuperar/compensar e inclui seus descendentes pela CT1_CTASUP.
+    - @EMPRESA, @FILIAL e @CONTA aceitam valores separados por virgula.
+      NULL ou vazio significa todos os valores permitidos naquela dimensao.
+
+  Seguranca:
+    Este arquivo contem somente o codigo-fonte versionado. A procedure nao foi
+    criada ou alterada no banco.
+=============================================================================*/
+/*
+Exemplo de uso apos instalacao autorizada:
+
+EXEC dbo.SP_HDS0000_RCTB01
+    @DATA_INI = '01/01/2026',
+    @DATA_FIM = '31/01/2026',
+    @CONTA    = NULL,
+    @EMPRESA  = '06,08,20,23',
+    @FILIAL   = NULL;
+*/
+
+CREATE OR ALTER PROCEDURE dbo.SP_HDS0000_RCTB01
+    @DATA_INI VARCHAR(10),
+    @DATA_FIM VARCHAR(10),
+    @CONTA    VARCHAR(MAX) = NULL,
+    @EMPRESA  VARCHAR(MAX) = NULL,
+    @FILIAL   VARCHAR(MAX) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @DATA_INICIAL DATE = TRY_CONVERT(DATE, @DATA_INI, 103);
+    DECLARE @DATA_FINAL   DATE = TRY_CONVERT(DATE, @DATA_FIM, 103);
+    DECLARE @DATA_INICIAL_PROTHEUS CHAR(8);
+    DECLARE @DATA_FINAL_PROTHEUS   CHAR(8);
+
+    IF @DATA_INICIAL IS NULL
+        THROW 50001, 'DATA_INI deve ser uma data valida no formato dd/mm/aaaa.', 1;
+
+    IF @DATA_FINAL IS NULL
+        THROW 50002, 'DATA_FIM deve ser uma data valida no formato dd/mm/aaaa.', 1;
+
+    IF @DATA_INICIAL > @DATA_FINAL
+        THROW 50003, 'DATA_INI nao pode ser maior que DATA_FIM.', 1;
+
+    IF @DATA_FINAL >= DATEADD(MONTH, 3, @DATA_INICIAL)
+        THROW 50007, 'O periodo deve ser inferior a tres meses por execucao.', 1;
+
+    SET @DATA_INICIAL_PROTHEUS = CONVERT(CHAR(8), @DATA_INICIAL, 112);
+    SET @DATA_FINAL_PROTHEUS = CONVERT(CHAR(8), @DATA_FINAL, 112);
+
+    CREATE TABLE #FILTRO_EMPRESA
+    (
+        EMPRESA CHAR(2) COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY
+    );
+
+    CREATE TABLE #FILTRO_FILIAL
+    (
+        FILIAL VARCHAR(6) COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY
+    );
+
+    CREATE TABLE #FILTRO_CONTA
+    (
+        CONTA VARCHAR(20) COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY
+    );
+
+    INSERT INTO #FILTRO_EMPRESA (EMPRESA)
+    SELECT DISTINCT CONVERT(CHAR(2), LTRIM(RTRIM(value)))
+    FROM STRING_SPLIT(COALESCE(@EMPRESA, ''), ',')
+    WHERE LTRIM(RTRIM(value)) <> '';
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM #FILTRO_EMPRESA AS FE
+        WHERE FE.EMPRESA NOT IN ('06', '08', '20', '23')
+    )
+        THROW 50004, 'EMPRESA aceita somente os grupos 06, 08, 20 e 23.', 1;
+
+    INSERT INTO #FILTRO_FILIAL (FILIAL)
+    SELECT DISTINCT CONVERT(VARCHAR(6), LTRIM(RTRIM(value)))
+    FROM STRING_SPLIT(COALESCE(@FILIAL, ''), ',')
+    WHERE LTRIM(RTRIM(value)) <> '';
+
+    INSERT INTO #FILTRO_CONTA (CONTA)
+    SELECT DISTINCT CONVERT(VARCHAR(20), LTRIM(RTRIM(value)))
+    FROM STRING_SPLIT(COALESCE(@CONTA, ''), ',')
+    WHERE LTRIM(RTRIM(value)) <> '';
+
+    CREATE TABLE #PLANO_CONTAS
+    (
+        EMPRESA        CHAR(2)      COLLATE DATABASE_DEFAULT NOT NULL,
+        CONTA          VARCHAR(20)  COLLATE DATABASE_DEFAULT NOT NULL,
+        DESCRICAO      VARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL,
+        CONTA_SUPERIOR VARCHAR(20)  COLLATE DATABASE_DEFAULT NOT NULL,
+        CLASSE         CHAR(1)      COLLATE DATABASE_DEFAULT NOT NULL,
+        CONSTRAINT PK_PLANO_CONTAS PRIMARY KEY CLUSTERED (EMPRESA, CONTA)
+    );
+
+    INSERT INTO #PLANO_CONTAS (EMPRESA, CONTA, DESCRICAO, CONTA_SUPERIOR, CLASSE)
+    SELECT '06', RTRIM(CT1_CONTA), RTRIM(CT1_DESC01), RTRIM(CT1_CTASUP), CT1_CLASSE
+    FROM dbo.CT1060
+    WHERE D_E_L_E_T_ = ''
+    UNION ALL
+    SELECT '08', RTRIM(CT1_CONTA), RTRIM(CT1_DESC01), RTRIM(CT1_CTASUP), CT1_CLASSE
+    FROM dbo.CT1080
+    WHERE D_E_L_E_T_ = ''
+    UNION ALL
+    SELECT '20', RTRIM(CT1_CONTA), RTRIM(CT1_DESC01), RTRIM(CT1_CTASUP), CT1_CLASSE
+    FROM dbo.CT1200
+    WHERE D_E_L_E_T_ = ''
+    UNION ALL
+    SELECT '23', RTRIM(CT1_CONTA), RTRIM(CT1_DESC01), RTRIM(CT1_CTASUP), CT1_CLASSE
+    FROM dbo.CT1230
+    WHERE D_E_L_E_T_ = '';
+
+    CREATE TABLE #CONTAS_TRIBUTOS
+    (
+        EMPRESA CHAR(2)     COLLATE DATABASE_DEFAULT NOT NULL,
+        CONTA   VARCHAR(20) COLLATE DATABASE_DEFAULT NOT NULL,
+        CONSTRAINT PK_CONTAS_TRIBUTOS PRIMARY KEY CLUSTERED (EMPRESA, CONTA)
+    );
+
+    ;WITH HIERARQUIA_TRIBUTOS AS
+    (
+        SELECT PC.EMPRESA, PC.CONTA
+        FROM #PLANO_CONTAS AS PC
+        WHERE PC.EMPRESA IN ('06', '08')
+          AND
+          (
+              UPPER(PC.DESCRICAO) LIKE '%TRIBUTOS A RECUPERAR%'
+              OR UPPER(PC.DESCRICAO) LIKE '%IMPOSTOS A RECUPERAR%'
+              OR UPPER(PC.DESCRICAO) LIKE '%TRIBUTOS A COMPENSAR%'
+          )
+
+        UNION ALL
+
+        SELECT FILHA.EMPRESA, FILHA.CONTA
+        FROM #PLANO_CONTAS AS FILHA
+        INNER JOIN HIERARQUIA_TRIBUTOS AS PAI
+            ON PAI.EMPRESA = FILHA.EMPRESA
+           AND PAI.CONTA = FILHA.CONTA_SUPERIOR
+    )
+    INSERT INTO #CONTAS_TRIBUTOS (EMPRESA, CONTA)
+    SELECT HT.EMPRESA, HT.CONTA
+    FROM HIERARQUIA_TRIBUTOS AS HT
+    GROUP BY HT.EMPRESA, HT.CONTA
+    OPTION (MAXRECURSION 100);
+
+    INSERT INTO #CONTAS_TRIBUTOS (EMPRESA, CONTA)
+    SELECT PC.EMPRESA, PC.CONTA
+    FROM #PLANO_CONTAS AS PC
+    INNER JOIN
+    (
+        VALUES
+            ('101020707'), ('101021001'), ('101021002'), ('101021003'),
+            ('101021004'), ('101021005'), ('101021006'), ('101021105'),
+            ('201010901'), ('201010902'), ('201010903'), ('201010904'),
+            ('201010905'), ('201010906'), ('201010908'), ('201010909'),
+            ('201010911'), ('201010913'), ('201010914'), ('201010915'),
+            ('201010918'), ('202010301')
+    ) AS LC (CONTA)
+        ON LC.CONTA = PC.CONTA
+    WHERE PC.EMPRESA IN ('20', '23');
+
+    IF NOT EXISTS (SELECT 1 FROM #CONTAS_TRIBUTOS)
+        THROW 50005, 'Nenhuma conta tributaria permitida foi localizada na CT1.', 1;
+
+    IF EXISTS (SELECT 1 FROM #FILTRO_CONTA)
+       AND NOT EXISTS
+       (
+           SELECT 1
+           FROM #FILTRO_CONTA AS FC
+           INNER JOIN #CONTAS_TRIBUTOS AS TR
+               ON TR.CONTA = FC.CONTA
+           WHERE NOT EXISTS (SELECT 1 FROM #FILTRO_EMPRESA)
+              OR EXISTS
+                 (SELECT 1 FROM #FILTRO_EMPRESA AS FE WHERE FE.EMPRESA = TR.EMPRESA)
+       )
+        THROW 50006, 'CONTA nao pertence a lista tributaria permitida nas empresas selecionadas.', 1;
+
+    CREATE TABLE #MOVIMENTOS
+    (
+        EMPRESA        CHAR(2)       COLLATE DATABASE_DEFAULT NOT NULL,
+        FILIAL         VARCHAR(6)    COLLATE DATABASE_DEFAULT NOT NULL,
+        DATA_LANCAMENTO CHAR(8)      COLLATE DATABASE_DEFAULT NOT NULL,
+        LOTE           VARCHAR(6)    COLLATE DATABASE_DEFAULT NOT NULL,
+        SUBLOTE        VARCHAR(3)    COLLATE DATABASE_DEFAULT NOT NULL,
+        DOCUMENTO      VARCHAR(6)    COLLATE DATABASE_DEFAULT NOT NULL,
+        LINHA          VARCHAR(3)    COLLATE DATABASE_DEFAULT NOT NULL,
+        TIPO_PARTIDA   CHAR(1)       COLLATE DATABASE_DEFAULT NOT NULL,
+        CONTA          VARCHAR(20)   COLLATE DATABASE_DEFAULT NOT NULL,
+        CONTRAPARTIDA  VARCHAR(20)   COLLATE DATABASE_DEFAULT NOT NULL,
+        FILIAL_ORIGEM  VARCHAR(6)    COLLATE DATABASE_DEFAULT NOT NULL,
+        CENTRO_CUSTO   VARCHAR(15)   COLLATE DATABASE_DEFAULT NOT NULL,
+        ITEM_CONTABIL  VARCHAR(15)   COLLATE DATABASE_DEFAULT NOT NULL,
+        CLASSE_VALOR   VARCHAR(15)   COLLATE DATABASE_DEFAULT NOT NULL,
+        HISTORICO      VARCHAR(40)   COLLATE DATABASE_DEFAULT NOT NULL,
+        VALOR          DECIMAL(20,2) NOT NULL,
+        VALOR_ASSINADO DECIMAL(20,2) NOT NULL,
+        RECNO_CT2      BIGINT        NOT NULL
+    );
+
+    ;WITH CT2 AS
+    (
+        SELECT '06' AS EMPRESA, CT2_FILIAL, CT2_DATA, CT2_LOTE, CT2_SBLOTE,
+               CT2_DOC, CT2_LINHA, CT2_DEBITO, CT2_CREDIT, CT2_CCD, CT2_CCC,
+               CT2_ITEMD, CT2_ITEMC, CT2_CLVLDB, CT2_CLVLCR, CT2_FILORI,
+               CT2_HIST, CT2_VALOR, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.CT2060
+        WHERE CT2_DATA <= @DATA_FINAL_PROTHEUS
+        UNION ALL
+        SELECT '08', CT2_FILIAL, CT2_DATA, CT2_LOTE, CT2_SBLOTE, CT2_DOC,
+               CT2_LINHA, CT2_DEBITO, CT2_CREDIT, CT2_CCD, CT2_CCC,
+               CT2_ITEMD, CT2_ITEMC, CT2_CLVLDB, CT2_CLVLCR, CT2_FILORI,
+               CT2_HIST, CT2_VALOR, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.CT2080
+        WHERE CT2_DATA <= @DATA_FINAL_PROTHEUS
+        UNION ALL
+        SELECT '20', CT2_FILIAL, CT2_DATA, CT2_LOTE, CT2_SBLOTE, CT2_DOC,
+               CT2_LINHA, CT2_DEBITO, CT2_CREDIT, CT2_CCD, CT2_CCC,
+               CT2_ITEMD, CT2_ITEMC, CT2_CLVLDB, CT2_CLVLCR, CT2_FILORI,
+               CT2_HIST, CT2_VALOR, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.CT2200
+        WHERE CT2_DATA <= @DATA_FINAL_PROTHEUS
+        UNION ALL
+        SELECT '23', CT2_FILIAL, CT2_DATA, CT2_LOTE, CT2_SBLOTE, CT2_DOC,
+               CT2_LINHA, CT2_DEBITO, CT2_CREDIT, CT2_CCD, CT2_CCC,
+               CT2_ITEMD, CT2_ITEMC, CT2_CLVLDB, CT2_CLVLCR, CT2_FILORI,
+               CT2_HIST, CT2_VALOR, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.CT2230
+        WHERE CT2_DATA <= @DATA_FINAL_PROTHEUS
+    )
+    INSERT INTO #MOVIMENTOS
+    (
+        EMPRESA, FILIAL, DATA_LANCAMENTO, LOTE, SUBLOTE, DOCUMENTO, LINHA,
+        TIPO_PARTIDA, CONTA, CONTRAPARTIDA, FILIAL_ORIGEM, CENTRO_CUSTO,
+        ITEM_CONTABIL, CLASSE_VALOR, HISTORICO, VALOR, VALOR_ASSINADO, RECNO_CT2
+    )
+    SELECT
+        L.EMPRESA,
+        RTRIM(L.CT2_FILIAL),
+        L.CT2_DATA,
+        RTRIM(L.CT2_LOTE),
+        RTRIM(L.CT2_SBLOTE),
+        RTRIM(L.CT2_DOC),
+        RTRIM(L.CT2_LINHA),
+        P.TIPO_PARTIDA,
+        RTRIM(P.CONTA),
+        RTRIM(P.CONTRAPARTIDA),
+        RTRIM(L.CT2_FILORI),
+        RTRIM(P.CENTRO_CUSTO),
+        RTRIM(P.ITEM_CONTABIL),
+        RTRIM(P.CLASSE_VALOR),
+        RTRIM(L.CT2_HIST),
+        CONVERT(DECIMAL(20,2), L.CT2_VALOR),
+        CONVERT(DECIMAL(20,2), L.CT2_VALOR * P.SINAL),
+        L.R_E_C_N_O_
+    FROM CT2 AS L
+    CROSS APPLY
+    (
+        VALUES
+            ('D', L.CT2_DEBITO, L.CT2_CREDIT, L.CT2_CCD, L.CT2_ITEMD, L.CT2_CLVLDB,  1),
+            ('C', L.CT2_CREDIT, L.CT2_DEBITO, L.CT2_CCC, L.CT2_ITEMC, L.CT2_CLVLCR, -1)
+    ) AS P
+      (TIPO_PARTIDA, CONTA, CONTRAPARTIDA, CENTRO_CUSTO, ITEM_CONTABIL,
+       CLASSE_VALOR, SINAL)
+    INNER JOIN #CONTAS_TRIBUTOS AS TR
+        ON TR.EMPRESA = L.EMPRESA
+       AND TR.CONTA = RTRIM(P.CONTA)
+    WHERE L.D_E_L_E_T_ = ''
+      AND L.CT2_DATA <> ''
+      AND RTRIM(P.CONTA) <> ''
+      AND (NOT EXISTS (SELECT 1 FROM #FILTRO_EMPRESA)
+           OR EXISTS (SELECT 1 FROM #FILTRO_EMPRESA AS FE WHERE FE.EMPRESA = L.EMPRESA))
+      AND (NOT EXISTS (SELECT 1 FROM #FILTRO_FILIAL)
+           OR EXISTS (SELECT 1 FROM #FILTRO_FILIAL AS FF WHERE FF.FILIAL = RTRIM(L.CT2_FILIAL)))
+      AND (NOT EXISTS (SELECT 1 FROM #FILTRO_CONTA)
+           OR EXISTS (SELECT 1 FROM #FILTRO_CONTA AS FC WHERE FC.CONTA = RTRIM(P.CONTA)));
+
+    CREATE CLUSTERED INDEX IX_MOVIMENTOS_RAZAO
+        ON #MOVIMENTOS
+           (EMPRESA, FILIAL, CONTA, ITEM_CONTABIL, DATA_LANCAMENTO,
+            LOTE, SUBLOTE, DOCUMENTO, LINHA, RECNO_CT2, TIPO_PARTIDA);
+
+    ;WITH RAZAO AS
+    (
+        SELECT
+            M.EMPRESA,
+            M.FILIAL,
+            CONVERT(DATE, M.DATA_LANCAMENTO, 112) AS DATA_LANCAMENTO,
+            M.LOTE,
+            M.SUBLOTE,
+            M.DOCUMENTO,
+            M.LINHA,
+            M.TIPO_PARTIDA,
+            M.CONTA,
+            M.CONTRAPARTIDA,
+            M.FILIAL_ORIGEM,
+            M.CENTRO_CUSTO,
+            M.ITEM_CONTABIL,
+            M.CLASSE_VALOR,
+            M.HISTORICO,
+            CASE WHEN M.TIPO_PARTIDA = 'D' THEN M.VALOR ELSE CONVERT(DECIMAL(20,2), 0) END AS DEBITO,
+            CASE WHEN M.TIPO_PARTIDA = 'C' THEN M.VALOR ELSE CONVERT(DECIMAL(20,2), 0) END AS CREDITO,
+            COALESCE
+            (
+                SUM(M.VALOR_ASSINADO) OVER
+                (
+                    PARTITION BY M.EMPRESA, M.FILIAL, M.CONTA
+                    ORDER BY M.DATA_LANCAMENTO, M.LOTE, M.SUBLOTE, M.DOCUMENTO,
+                             M.LINHA, M.RECNO_CT2, M.TIPO_PARTIDA
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ),
+                CONVERT(DECIMAL(20,2), 0)
+            ) AS SALDO_ANTERIOR,
+            SUM(M.VALOR_ASSINADO) OVER
+            (
+                PARTITION BY M.EMPRESA, M.FILIAL, M.CONTA
+                ORDER BY M.DATA_LANCAMENTO, M.LOTE, M.SUBLOTE, M.DOCUMENTO,
+                         M.LINHA, M.RECNO_CT2, M.TIPO_PARTIDA
+                ROWS UNBOUNDED PRECEDING
+            ) AS SALDO_ATUAL,
+            M.RECNO_CT2
+        FROM #MOVIMENTOS AS M
+    )
+    SELECT
+        R.EMPRESA AS [GRUPO EMPRESA],
+        R.CONTA AS [CONTA],
+        R.DATA_LANCAMENTO AS [DATA],
+        CONCAT(R.LOTE, '/', R.SUBLOTE, '/', R.DOCUMENTO, '/', R.LINHA)
+            AS [LOTE/SUB/DOC/LINHA],
+        R.HISTORICO AS [HISTORICO],
+        R.CONTRAPARTIDA AS [C/PARTIDA],
+        R.FILIAL_ORIGEM AS [FILIAL DE ORIGEM],
+        R.CENTRO_CUSTO AS [C CUSTO],
+        R.ITEM_CONTABIL AS [ITEM CONTA],
+        R.CLASSE_VALOR AS [COD CL VAL],
+        R.DEBITO AS [DEBITO],
+        R.CREDITO AS [CREDITO],
+        R.SALDO_ANTERIOR AS [SALDO ANTERIOR],
+        R.SALDO_ATUAL AS [SALDO ATUAL]
+    FROM RAZAO AS R
+    WHERE R.DATA_LANCAMENTO BETWEEN @DATA_INICIAL AND @DATA_FINAL
+    ORDER BY
+        R.EMPRESA, R.FILIAL, R.CONTA, R.ITEM_CONTABIL, R.DATA_LANCAMENTO,
+        R.LOTE, R.SUBLOTE, R.DOCUMENTO, R.LINHA, R.RECNO_CT2, R.TIPO_PARTIDA;
+END;
