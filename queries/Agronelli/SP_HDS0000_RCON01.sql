@@ -4,17 +4,19 @@
   Banco.........: CCW2SA_171703_PR_PD
   Conexao.......: Agronelli_tst_local
   Granularidade.: Uma linha por grupo e movimento de estoque em SD1, SD2 ou SD3.
-  Validado em...: 2026-09-02, somente leitura, via MCP dbcode.
+  Validado em...: 2026-09-30, somente leitura, via MCP dbcode.
 
   Objetos validados:
     Grupos 20/06/08/23, respectivamente:
     SD1200/SD1060/SD1080/SD1230 - Itens de documentos de entrada
     SD2200/SD2060/SD2080/SD2230 - Itens de documentos de saida
     SD3200/SD3060/SD3080/SD3230 - Movimentos internos
+    SF1060/SF2060 - Cabecalhos fiscais usados para o log do grupo 06
     SF4200/SF4060/SF4080/SF4230 - Tipos de entrada/saida
     SB1200/SB1060/SB1080/SB1230 - Cadastro de produtos
     CT1200/CT1060/CT1080/CT1230 - Plano de contas
     SX5200/SX5060/SX5080/SX5230 - Tabela generica 13 (CFOP)
+    SYS_USR - Cadastro de usuarios
 
   Regras:
     SD1 e SD2 entram somente quando a TES da mesma filial possui
@@ -27,6 +29,11 @@
     nao possui dominio no SX3, descreve o prefixo DE/RE/PR.
     CUSTO_TOTAL usa D1_CUSTO, D2_CUSTO1 ou D3_CUSTO1 em moeda 1.
     CUSTO_UNITARIO corresponde ao custo total dividido pela quantidade.
+    USUARIO_ID, USUARIO_LOGIN e USUARIO_NOME identificam o usuario de
+    inclusao do movimento. Nos grupos 20 e 23, o log vem do proprio item.
+    No grupo 06, SD1 e SD2 usam o log do cabecalho SF1/SF2; SD3 nao possui
+    USERLGI. No grupo 08, nenhuma das tres origens possui USERLGI. Nesses
+    casos sem log configurado, os campos de usuario retornam vazios.
     O cadastro e a conta contabil sao materializados uma vez por produto
     distinto em #PRODUTOS_KARDEX. B1_CONTA e relacionada diretamente a CT1;
     a consulta final acessa apenas a temporaria pronta.
@@ -178,6 +185,7 @@ BEGIN
         SERIE               VARCHAR(3)    COLLATE DATABASE_DEFAULT NOT NULL,
         ITEM                VARCHAR(6)    COLLATE DATABASE_DEFAULT NOT NULL,
         TIPO_DOCUMENTO      VARCHAR(1)    COLLATE DATABASE_DEFAULT NOT NULL,
+        USUARIO_ID          VARCHAR(6)    COLLATE DATABASE_DEFAULT NOT NULL,
         RECNO_ORIGEM        BIGINT        NOT NULL
     );
 
@@ -186,7 +194,8 @@ BEGIN
     (
         GRUPO_EMPRESA, ORIGEM, FILIAL, PRODUTO, ARMAZEM, DATA_MOVIMENTO, SENTIDO,
         MOVIMENTO, CFOP, QUANTIDADE, QUANTIDADE_ASSINADA, CUSTO_TOTAL,
-        CUSTO_UNITARIO, DOCUMENTO, SERIE, ITEM, TIPO_DOCUMENTO, RECNO_ORIGEM
+        CUSTO_UNITARIO, DOCUMENTO, SERIE, ITEM, TIPO_DOCUMENTO, USUARIO_ID,
+        RECNO_ORIGEM
     )
     SELECT
         D1.GRUPO_EMPRESA,
@@ -206,27 +215,50 @@ BEGIN
         D1.D1_SERIE,
         D1.D1_ITEM,
         D1.D1_TIPO,
+        CONVERT
+        (
+            VARCHAR(6),
+            SUBSTRING(D1.USUARIO_LOG, 11, 1) + SUBSTRING(D1.USUARIO_LOG, 15, 1)
+            + SUBSTRING(D1.USUARIO_LOG, 2, 1) + SUBSTRING(D1.USUARIO_LOG, 6, 1)
+            + SUBSTRING(D1.USUARIO_LOG, 10, 1) + SUBSTRING(D1.USUARIO_LOG, 14, 1)
+        ),
         D1.R_E_C_N_O_
     FROM
     (
         SELECT '20' AS GRUPO_EMPRESA, D1_FILIAL, D1_COD, D1_LOCAL, D1_DTDIGIT,
                D1_TES, D1_CF, D1_QUANT, D1_CUSTO, D1_DOC, D1_SERIE, D1_ITEM,
-               D1_TIPO, R_E_C_N_O_, D_E_L_E_T_
+               D1_TIPO, D1_USERLGI AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
         FROM dbo.SD1200
         UNION ALL
-        SELECT '06', D1_FILIAL, D1_COD, D1_LOCAL, D1_DTDIGIT, D1_TES, D1_CF,
-               D1_QUANT, D1_CUSTO, D1_DOC, D1_SERIE, D1_ITEM, D1_TIPO,
-               R_E_C_N_O_, D_E_L_E_T_
-        FROM dbo.SD1060
+        SELECT '06', D1.D1_FILIAL, D1.D1_COD, D1.D1_LOCAL, D1.D1_DTDIGIT,
+               D1.D1_TES, D1.D1_CF, D1.D1_QUANT, D1.D1_CUSTO, D1.D1_DOC,
+               D1.D1_SERIE, D1.D1_ITEM, D1.D1_TIPO,
+               COALESCE(F1.F1_USERLGI, '') AS USUARIO_LOG,
+               D1.R_E_C_N_O_, D1.D_E_L_E_T_
+        FROM dbo.SD1060 AS D1
+        LEFT JOIN
+        (
+            SELECT F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_TIPO,
+                   MAX(F1_USERLGI) AS F1_USERLGI
+            FROM dbo.SF1060
+            WHERE D_E_L_E_T_ = ''
+            GROUP BY F1_FILIAL, F1_DOC, F1_SERIE, F1_FORNECE, F1_LOJA, F1_TIPO
+        ) AS F1
+            ON F1.F1_FILIAL = D1.D1_FILIAL
+           AND F1.F1_DOC = D1.D1_DOC
+           AND F1.F1_SERIE = D1.D1_SERIE
+           AND F1.F1_FORNECE = D1.D1_FORNECE
+           AND F1.F1_LOJA = D1.D1_LOJA
+           AND F1.F1_TIPO = D1.D1_TIPO
         UNION ALL
         SELECT '08', D1_FILIAL, D1_COD, D1_LOCAL, D1_DTDIGIT, D1_TES, D1_CF,
                D1_QUANT, D1_CUSTO, D1_DOC, D1_SERIE, D1_ITEM, D1_TIPO,
-               R_E_C_N_O_, D_E_L_E_T_
+               CONVERT(VARCHAR(17), '') AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
         FROM dbo.SD1080
         UNION ALL
         SELECT '23', D1_FILIAL, D1_COD, D1_LOCAL, D1_DTDIGIT, D1_TES, D1_CF,
                D1_QUANT, D1_CUSTO, D1_DOC, D1_SERIE, D1_ITEM, D1_TIPO,
-               R_E_C_N_O_, D_E_L_E_T_
+               D1_USERLGI AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
         FROM dbo.SD1230
     ) AS D1
     WHERE D1.D_E_L_E_T_ = ''
@@ -272,7 +304,8 @@ BEGIN
     (
         GRUPO_EMPRESA, ORIGEM, FILIAL, PRODUTO, ARMAZEM, DATA_MOVIMENTO, SENTIDO,
         MOVIMENTO, CFOP, QUANTIDADE, QUANTIDADE_ASSINADA, CUSTO_TOTAL,
-        CUSTO_UNITARIO, DOCUMENTO, SERIE, ITEM, TIPO_DOCUMENTO, RECNO_ORIGEM
+        CUSTO_UNITARIO, DOCUMENTO, SERIE, ITEM, TIPO_DOCUMENTO, USUARIO_ID,
+        RECNO_ORIGEM
     )
     SELECT
         D2.GRUPO_EMPRESA,
@@ -292,25 +325,51 @@ BEGIN
         D2.D2_SERIE,
         CONVERT(VARCHAR(4), D2.D2_ITEM),
         D2.D2_TIPO,
+        CONVERT
+        (
+            VARCHAR(6),
+            SUBSTRING(D2.USUARIO_LOG, 11, 1) + SUBSTRING(D2.USUARIO_LOG, 15, 1)
+            + SUBSTRING(D2.USUARIO_LOG, 2, 1) + SUBSTRING(D2.USUARIO_LOG, 6, 1)
+            + SUBSTRING(D2.USUARIO_LOG, 10, 1) + SUBSTRING(D2.USUARIO_LOG, 14, 1)
+        ),
         D2.R_E_C_N_O_
     FROM
     (
         SELECT '20' AS GRUPO_EMPRESA, D2_FILIAL, D2_COD, D2_LOCAL, D2_EMISSAO,
                D2_TES, D2_CF, D2_QUANT, D2_CUSTO1, D2_DOC, D2_SERIE, D2_ITEM,
-               D2_TIPO, R_E_C_N_O_, D_E_L_E_T_
+               D2_TIPO, D2_USERLGI AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
         FROM dbo.SD2200
         UNION ALL
-        SELECT '06', D2_FILIAL, D2_COD, D2_LOCAL, D2_EMISSAO, D2_TES, D2_CF,
-               D2_QUANT, D2_CUSTO1, D2_DOC, D2_SERIE, D2_ITEM, D2_TIPO,
-               R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD2060
+        SELECT '06', D2.D2_FILIAL, D2.D2_COD, D2.D2_LOCAL, D2.D2_EMISSAO,
+               D2.D2_TES, D2.D2_CF, D2.D2_QUANT, D2.D2_CUSTO1, D2.D2_DOC,
+               D2.D2_SERIE, D2.D2_ITEM, D2.D2_TIPO,
+               COALESCE(F2.F2_USERLGI, '') AS USUARIO_LOG,
+               D2.R_E_C_N_O_, D2.D_E_L_E_T_
+        FROM dbo.SD2060 AS D2
+        LEFT JOIN
+        (
+            SELECT F2_FILIAL, F2_DOC, F2_SERIE, F2_CLIENTE, F2_LOJA, F2_TIPO,
+                   MAX(F2_USERLGI) AS F2_USERLGI
+            FROM dbo.SF2060
+            WHERE D_E_L_E_T_ = ''
+            GROUP BY F2_FILIAL, F2_DOC, F2_SERIE, F2_CLIENTE, F2_LOJA, F2_TIPO
+        ) AS F2
+            ON F2.F2_FILIAL = D2.D2_FILIAL
+           AND F2.F2_DOC = D2.D2_DOC
+           AND F2.F2_SERIE = D2.D2_SERIE
+           AND F2.F2_CLIENTE = D2.D2_CLIENTE
+           AND F2.F2_LOJA = D2.D2_LOJA
+           AND F2.F2_TIPO = D2.D2_TIPO
         UNION ALL
         SELECT '08', D2_FILIAL, D2_COD, D2_LOCAL, D2_EMISSAO, D2_TES, D2_CF,
                D2_QUANT, D2_CUSTO1, D2_DOC, D2_SERIE, D2_ITEM, D2_TIPO,
-               R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD2080
+               CONVERT(VARCHAR(17), '') AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.SD2080
         UNION ALL
         SELECT '23', D2_FILIAL, D2_COD, D2_LOCAL, D2_EMISSAO, D2_TES, D2_CF,
                D2_QUANT, D2_CUSTO1, D2_DOC, D2_SERIE, D2_ITEM, D2_TIPO,
-               R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD2230
+               D2_USERLGI AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.SD2230
     ) AS D2
     WHERE D2.D_E_L_E_T_ = ''
       AND D2.D2_EMISSAO BETWEEN @DATA_INICIAL_PROTHEUS AND @DATA_FINAL_PROTHEUS
@@ -348,7 +407,8 @@ BEGIN
     (
         GRUPO_EMPRESA, ORIGEM, FILIAL, PRODUTO, ARMAZEM, DATA_MOVIMENTO, SENTIDO,
         MOVIMENTO, CFOP, QUANTIDADE, QUANTIDADE_ASSINADA, CUSTO_TOTAL,
-        CUSTO_UNITARIO, DOCUMENTO, SERIE, ITEM, TIPO_DOCUMENTO, RECNO_ORIGEM
+        CUSTO_UNITARIO, DOCUMENTO, SERIE, ITEM, TIPO_DOCUMENTO, USUARIO_ID,
+        RECNO_ORIGEM
     )
     SELECT
         D3.GRUPO_EMPRESA,
@@ -372,21 +432,34 @@ BEGIN
         '',
         D3.D3_NUMSEQ,
         '',
+        CONVERT
+        (
+            VARCHAR(6),
+            SUBSTRING(D3.USUARIO_LOG, 11, 1) + SUBSTRING(D3.USUARIO_LOG, 15, 1)
+            + SUBSTRING(D3.USUARIO_LOG, 2, 1) + SUBSTRING(D3.USUARIO_LOG, 6, 1)
+            + SUBSTRING(D3.USUARIO_LOG, 10, 1) + SUBSTRING(D3.USUARIO_LOG, 14, 1)
+        ),
         D3.R_E_C_N_O_
     FROM
     (
         SELECT '20' AS GRUPO_EMPRESA, D3_FILIAL, D3_COD, D3_LOCAL, D3_EMISSAO,
                D3_CF, D3_QUANT, D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ,
-               R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD3200
+               D3_USERLGI AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD3200
         UNION ALL
         SELECT '06', D3_FILIAL, D3_COD, D3_LOCAL, D3_EMISSAO, D3_CF, D3_QUANT,
-               D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ, R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD3060
+               D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ,
+               CONVERT(VARCHAR(17), '') AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.SD3060
         UNION ALL
         SELECT '08', D3_FILIAL, D3_COD, D3_LOCAL, D3_EMISSAO, D3_CF, D3_QUANT,
-               D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ, R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD3080
+               D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ,
+               CONVERT(VARCHAR(17), '') AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.SD3080
         UNION ALL
         SELECT '23', D3_FILIAL, D3_COD, D3_LOCAL, D3_EMISSAO, D3_CF, D3_QUANT,
-               D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ, R_E_C_N_O_, D_E_L_E_T_ FROM dbo.SD3230
+               D3_CUSTO1, D3_TM, D3_DOC, D3_NUMSEQ,
+               D3_USERLGI AS USUARIO_LOG, R_E_C_N_O_, D_E_L_E_T_
+        FROM dbo.SD3230
     ) AS D3
     WHERE D3.D_E_L_E_T_ = ''
       AND D3.D3_EMISSAO BETWEEN @DATA_INICIAL_PROTHEUS AND @DATA_FINAL_PROTHEUS
@@ -501,6 +574,9 @@ BEGIN
         K.ORIGEM,
         K.TIPO_DOCUMENTO,
         K.RECNO_ORIGEM,
+        K.USUARIO_ID,
+        COALESCE(RTRIM(U.USR_CODIGO), '') AS USUARIO_LOGIN,
+        COALESCE(RTRIM(U.USR_NOME), '') AS USUARIO_NOME,
         P.CONTA_CONTABIL,
         P.DESCRICAO_CONTA_CONTABIL,
         K.CUSTO_TOTAL,
@@ -510,6 +586,9 @@ BEGIN
     INNER JOIN #PRODUTOS_KARDEX AS P
         ON P.GRUPO_EMPRESA = K.GRUPO_EMPRESA
        AND P.PRODUTO = K.PRODUTO
+    LEFT JOIN dbo.SYS_USR AS U
+        ON U.USR_ID = K.USUARIO_ID
+       AND U.D_E_L_E_T_ = ''
     LEFT JOIN DESCRICOES_CFOP AS X5_CFOP
         ON X5_CFOP.GRUPO_EMPRESA = K.GRUPO_EMPRESA
        AND X5_CFOP.X5_FILIAL = ''
